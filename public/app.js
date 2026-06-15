@@ -15,7 +15,10 @@ const LIVE_ACTIVE = new Set(['starting', 'running', 'paused', 'completed']);
 // ---------- WebSocket ----------
 let ws;
 function connect() {
-  ws = new WebSocket(`ws://${location.host}/ws`);
+  // Match the page scheme so it works behind an HTTPS reverse proxy / tunnel
+  // (e.g. Cloudflare): https → wss, http → ws. Avoids mixed-content blocking.
+  const wsProto = location.protocol === 'https:' ? 'wss:' : 'ws:';
+  ws = new WebSocket(`${wsProto}//${location.host}/ws`);
   ws.onopen = () => setConn(true);
   ws.onclose = () => {
     setConn(false);
@@ -340,4 +343,17 @@ function toast(msg) {
   toastTimer = setTimeout(() => t.classList.remove('show'), 2200);
 }
 
+// Populate immediately over REST (works even if the WebSocket is blocked or
+// slow behind a proxy/tunnel); the socket then keeps things live.
+async function loadInitial() {
+  try {
+    const res = await fetch('/api/runs');
+    if (!res.ok) return;
+    const runs = await res.json();
+    runs.forEach((r) => state.runs.set(r.id, r));
+    renderAll();
+  } catch {}
+}
+
+loadInitial();
 connect();

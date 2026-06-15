@@ -112,6 +112,23 @@ Example:
 MUXRUNNER_PORT=8080 MUXRUNNER_LOG_DIR=/var/muxrunner/logs npm start
 ```
 
+### Exposing it remotely (reverse proxy / tunnel)
+
+MuxRunner works behind an HTTPS reverse proxy or tunnel (e.g. **Cloudflare
+Tunnel**, nginx, Caddy). The front-end automatically uses `wss://` when the page
+is served over HTTPS, so the live WebSocket connects correctly — no config
+needed. Just make sure your proxy **forwards WebSocket upgrades** for the `/ws`
+path (Cloudflare Tunnel does this by default).
+
+```bash
+# example: expose the local instance with a Cloudflare tunnel
+cloudflared tunnel --url http://localhost:1369
+```
+
+> Security note: MuxRunner runs arbitrary shell commands. When exposing it
+> beyond your machine, put authentication in front of it (e.g. Cloudflare
+> Access) — it has no built-in auth.
+
 ---
 
 ## How it works
