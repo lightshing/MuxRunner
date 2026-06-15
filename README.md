@@ -75,8 +75,13 @@ npm start
 Then open **http://localhost:1369**.
 
 > Logs are written to a `logs/` folder **in the directory you launched from**.
-> Run MuxRunner from wherever you want your logs (and your commands' default
-> working directory) to live.
+> Run MuxRunner from wherever you want your logs to live.
+>
+> Your commands run in a tmux session that starts in the **parent of the app
+> directory** by default (e.g. `/home/ubuntu` when MuxRunner lives in
+> `/home/ubuntu/MuxRunner`) — so commands run from your home, not inside the
+> tool's own checkout. Override with `MUXRUNNER_SESSION_CWD` (absolute, or
+> relative to the launch directory).
 
 ### Run as a service (auto-start on boot)
 
@@ -112,6 +117,22 @@ systemctl status muxrunner.service
 
 Adjust `User`, `WorkingDirectory`, and the `node` path for your host. Service
 output goes to `logs/service.log` (and `journalctl -u muxrunner`).
+
+### Restart the service
+
+```bash
+sudo systemctl restart muxrunner.service
+systemctl status muxrunner.service   # confirm it's active
+```
+
+Or, if you're running it directly (not via systemd):
+
+```bash
+# Find and stop the existing process
+pkill -f "node server.js"
+# Start again
+npm start
+```
 
 ---
 
@@ -200,15 +221,20 @@ command set changes state — and ask it, from your phone, what's running.
 | 🚀 **Started**     | set name, command count, `tmux attach …`, run id             |
 | ⏸️ **Paused** (error) | name, progress (`done/total`), the failed command + exit code, `tmux attach …` |
 | ✅ **Ended** (completed) | name, command count, total wall-clock duration, `tmux attach …` |
-| 🛑 **Closed**      | name, progress at close                                      |
+| ⏹️ **Closed**      | name, progress at close                                      |
 
-**Ask the bot anything** (send it a command in the chat):
+**Tap, don't type.** Every bot message carries an inline **button selector** —
+just tap **📡 活动会话 / 🗂️ 历史记录 / ❓ 帮助** instead of typing commands. The
+typed commands still work too:
 
 | Command                | Reply                                                      |
 | ---------------------- | ---------------------------------------------------------- |
-| `/sessions` (`/status`, `/s`) | every active session: status, `done/total` progress, and its `tmux attach …` |
-| `/all`                 | the most recent runs and their outcomes                    |
-| `/help`                | the command list                                           |
+| **📡 活动会话** / `/sessions` (`/status`, `/s`) | every active session: status, `done/total` progress, and its `tmux attach …` |
+| **🗂️ 历史记录** / `/all`  | finished runs grouped by outcome — ✅ completed, ⏸️ paused, ⏹️ closed |
+| **❓ 帮助** / `/help`     | the command list                                           |
+
+Statuses use clean, distinct glyphs — ⏳ starting · ▶️ running · ⏸️ paused ·
+✅ completed · ⏹️ closed — instead of garish red/green dots.
 
 ### Setup (where to fill in your Bot API info)
 
