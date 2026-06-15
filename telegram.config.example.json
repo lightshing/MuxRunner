@@ -1,0 +1,14 @@
+{
+  "_comment": "Copy this file to telegram.config.json and fill in your values. telegram.config.json is git-ignored so your token stays private. Env vars (TELEGRAM_BOT_TOKEN / TELEGRAM_CHAT_ID) override these. Leave botToken empty to disable Telegram entirely.",
+
+  "botToken": "PASTE-YOUR-BOT-TOKEN-HERE",
+
+  "chatId": "PASTE-YOUR-CHAT-ID-HERE",
+
+  "enabled": true,
+
+  "_howToGet": {
+    "botToken": "Open Telegram, message @BotFather, send /newbot, follow the prompts. It replies with a token like 123456789:AAE...; paste it as botToken.",
+    "chatId": "Easiest way: leave chatId empty, start MuxRunner, then send any message to your bot. It replies with your numeric chat id — paste that here and restart. (Or use a group/channel id, e.g. -1001234567890.)"
+  }
+}

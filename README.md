@@ -40,6 +40,11 @@ for errors later.
   output, with errored commands highlighted. **Expand/Collapse all**, **copy any
   single command**, and **tick a subset of commands to re-send them (in order)
   into Compose** — edit, then launch a fresh run.
+- 🤖 **Telegram bot** — get a push the moment a command set **starts**,
+  **pauses on error**, or **ends** — each message carries the set name, command
+  count, progress, and the copy-paste `tmux attach …` command. Message the bot
+  back with `/sessions` to see what's running, each session's progress, and its
+  attach command from your phone. See [Telegram notifications](#telegram-notifications).
 
 ---
 
@@ -72,6 +77,41 @@ Then open **http://localhost:1369**.
 > Logs are written to a `logs/` folder **in the directory you launched from**.
 > Run MuxRunner from wherever you want your logs (and your commands' default
 > working directory) to live.
+
+### Run as a service (auto-start on boot)
+
+On a systemd host you can keep MuxRunner running across reboots. Install
+`/etc/systemd/system/muxrunner.service`:
+
+```ini
+[Unit]
+Description=MuxRunner - web-based tmux command runner
+After=network.target
+
+[Service]
+Type=simple
+User=ubuntu
+WorkingDirectory=/home/ubuntu/MuxRunner
+ExecStart=/usr/bin/node /home/ubuntu/MuxRunner/server.js
+Restart=on-failure
+RestartSec=3
+StandardOutput=append:/home/ubuntu/MuxRunner/logs/service.log
+StandardError=append:/home/ubuntu/MuxRunner/logs/service.log
+
+[Install]
+WantedBy=multi-user.target
+```
+
+Then enable and start it:
+
+```bash
+sudo systemctl daemon-reload
+sudo systemctl enable --now muxrunner.service
+systemctl status muxrunner.service
+```
+
+Adjust `User`, `WorkingDirectory`, and the `node` path for your host. Service
+output goes to `logs/service.log` (and `journalctl -u muxrunner`).
 
 ---
 
@@ -115,6 +155,11 @@ Environment variables (all optional):
 | `MUXRUNNER_PORT`     | `1369`        | HTTP/WebSocket port                      |
 | `MUXRUNNER_HOST`     | `127.0.0.1`   | Bind address                             |
 | `MUXRUNNER_LOG_DIR`  | `./logs`      | Where logs + metadata are written        |
+| `TELEGRAM_BOT_TOKEN` | _(unset)_     | Bot token; overrides `telegram.config.json` |
+| `TELEGRAM_CHAT_ID`   | _(unset)_     | Target chat for push; overrides config file |
+| `TELEGRAM_ENABLED`   | `1`           | Set `0` to keep the token but disable Telegram |
+
+See [Telegram notifications](#telegram-notifications) for the full setup.
 
 Example:
 
@@ -138,6 +183,58 @@ cloudflared tunnel --url http://localhost:1369
 > Security note: MuxRunner runs arbitrary shell commands. When exposing it
 > beyond your machine, put authentication in front of it (e.g. Cloudflare
 > Access) — it has no built-in auth.
+
+---
+
+## Telegram notifications
+
+MuxRunner can push to a **Telegram bot** so you get notified the moment a
+command set changes state — and ask it, from your phone, what's running.
+
+### What you get
+
+**Proactive push** (no polling on your end):
+
+| Event              | Message includes                                              |
+| ------------------ | ------------------------------------------------------------ |
+| 🚀 **Started**     | set name, command count, `tmux attach …`, run id             |
+| ⏸️ **Paused** (error) | name, progress (`done/total`), the failed command + exit code, `tmux attach …` |
+| ✅ **Ended** (completed) | name, command count, total wall-clock duration, `tmux attach …` |
+| 🛑 **Closed**      | name, progress at close                                      |
+
+**Ask the bot anything** (send it a command in the chat):
+
+| Command                | Reply                                                      |
+| ---------------------- | ---------------------------------------------------------- |
+| `/sessions` (`/status`, `/s`) | every active session: status, `done/total` progress, and its `tmux attach …` |
+| `/all`                 | the most recent runs and their outcomes                    |
+| `/help`                | the command list                                           |
+
+### Setup (where to fill in your Bot API info)
+
+1. **Create a bot:** open Telegram, message [@BotFather](https://t.me/BotFather),
+   send `/newbot`, and follow the prompts. It hands you a **token** like
+   `123456789:AAE...`.
+2. **Drop in your token:** copy the template and fill it in —
+
+   ```bash
+   cp telegram.config.example.json telegram.config.json
+   # edit telegram.config.json → paste your token into "botToken"
+   ```
+
+   `telegram.config.json` is **git-ignored**, so your token stays out of the repo.
+3. **Find your chat id (the easy way):** leave `chatId` empty, start MuxRunner,
+   then send **any** message to your bot. It replies with your numeric chat id —
+   paste that into `telegram.config.json` as `chatId` and restart. (A group or
+   channel id like `-1001234567890` works too.)
+4. **Restart** MuxRunner. On boot it logs `Telegram: enabled` once configured.
+
+That's it — push notifications start flowing and the bot answers commands. Only
+the configured `chatId` is served, so run data isn't exposed to other chats.
+
+> Prefer environment variables? `TELEGRAM_BOT_TOKEN` and `TELEGRAM_CHAT_ID`
+> override the config file (handy for the systemd unit via `Environment=`).
+> Set `TELEGRAM_ENABLED=0` to keep the token but pause notifications.
 
 ---
 
@@ -187,11 +284,13 @@ MuxRunner/
 │   ├── markers.js       # sentinel marker format (shared)
 │   ├── script.js        # generates the bash runner script
 │   ├── tmux.js          # thin tmux CLI wrapper
+│   ├── telegram.js      # Telegram push + bot-command poller
 │   └── store.js         # run lifecycle, log tailing, persistence
 ├── public/              # static front-end (no build step)
 │   ├── index.html
 │   ├── styles.css
 │   └── app.js
+├── telegram.config.example.json  # copy → telegram.config.json, fill in token
 ├── logs/                # created at runtime (git-ignored)
 │   ├── <name>_<ts>.log  # full tmux record
 │   ├── <id>.json        # structured run metadata

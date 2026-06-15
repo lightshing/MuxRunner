@@ -3,3 +3,6 @@ logs/
 *.log
 .DS_Store
 npm-debug.log*
+
+# Telegram credentials — keep your real token out of git.
+telegram.config.json

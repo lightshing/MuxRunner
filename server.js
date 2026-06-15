@@ -10,6 +10,7 @@ import { PORT, HOST, LOG_DIR } from './lib/config.js';
 import { manager } from './lib/store.js';
 import { isTmuxAvailable } from './lib/tmux.js';
 import { stripAnsi } from './lib/util.js';
+import { bot } from './lib/telegram.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -19,6 +20,9 @@ async function main() {
     process.exit(1);
   }
   await manager.init();
+
+  // Telegram push + bot commands (no-op unless a bot token is configured).
+  bot.start(manager);
 
   const app = express();
   app.use(express.json({ limit: '2mb' }));
