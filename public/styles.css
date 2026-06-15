@@ -1,19 +1,19 @@
 :root {
-  --bg: #0b0d12;
-  --bg-2: #11141c;
-  --panel: #161a24;
-  --panel-2: #1c212e;
-  --border: #262d3d;
-  --border-2: #313a4f;
-  --text: #e7ecf5;
-  --muted: #8a93a6;
-  --faint: #5b6377;
-  --accent: #6d8bff;
-  --accent-2: #8b6dff;
-  --green: #3ecf8e;
-  --amber: #f5b945;
-  --red: #ff6b6b;
-  --shadow: 0 10px 40px rgba(0, 0, 0, 0.45);
+  --bg: #ffffff;
+  --bg-2: #f5f7fb;
+  --panel: #ffffff;
+  --panel-2: #f1f4fa;
+  --border: #e6eaf2;
+  --border-2: #d6dce8;
+  --text: #1a1f2b;
+  --muted: #5e6678;
+  --faint: #98a0b2;
+  --accent: #4f6bff;
+  --accent-2: #7a52ff;
+  --green: #14a06a;
+  --amber: #c9810a;
+  --red: #e5484d;
+  --shadow: 0 8px 30px rgba(20, 30, 60, 0.08);
   --radius: 16px;
   --font: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial,
     sans-serif;
@@ -24,7 +24,7 @@
 html, body { height: 100%; margin: 0; }
 body {
   font-family: var(--font);
-  background: radial-gradient(1200px 800px at 80% -10%, #1a2030 0%, var(--bg) 55%);
+  background: radial-gradient(1200px 800px at 80% -10%, #eef2ff 0%, var(--bg) 55%);
   color: var(--text);
   -webkit-font-smoothing: antialiased;
 }
@@ -204,20 +204,20 @@ button, input, textarea { font-family: inherit; }
 
 /* ---------- Console / output ---------- */
 .console {
-  background: #07090d; border: 1px solid var(--border); border-radius: 10px;
+  background: #f6f8fc; border: 1px solid var(--border); border-radius: 10px;
   padding: 14px 16px; font-family: var(--mono); font-size: 12.5px; line-height: 1.55;
-  color: #cdd6e6; white-space: pre-wrap; word-break: break-word; margin: 0;
+  color: #232a38; white-space: pre-wrap; word-break: break-word; margin: 0;
   max-height: 100%; overflow: auto;
 }
 .cmd .console { max-height: 360px; margin-top: 4px; }
 .console:empty::before { content: "(no output)"; color: var(--faint); }
 
 /* ---------- Drawer ---------- */
-.drawer-scrim { position: fixed; inset: 0; background: rgba(0,0,0,0.5); z-index: 40; }
+.drawer-scrim { position: fixed; inset: 0; background: rgba(20,30,60,0.28); z-index: 40; }
 .drawer {
   position: fixed; top: 0; right: 0; height: 100vh; width: min(620px, 92vw);
   background: var(--bg-2); border-left: 1px solid var(--border); z-index: 50;
-  display: flex; flex-direction: column; box-shadow: -20px 0 60px rgba(0,0,0,0.5);
+  display: flex; flex-direction: column; box-shadow: -20px 0 60px rgba(20,30,60,0.16);
   animation: slidein 0.18s ease;
 }
 @keyframes slidein { from { transform: translateX(30px); opacity: 0.4; } to { transform: none; opacity: 1; } }

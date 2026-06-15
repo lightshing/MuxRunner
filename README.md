@@ -15,8 +15,8 @@ for errors later.
 
 ## Features
 
-- 🧩 **Compose & name command sets** — one bash command per line, in a polished
-  (non-terminal-looking) UI.
+- 🧩 **Compose & name command sets** — one bash command per line, in a clean,
+  light, polished (non-terminal-looking) UI.
 - 🖥️ **Each set runs in its own tmux session** — run many concurrently.
 - ▶️ **Strict sequential execution** — line _N+1_ starts only after line _N_
   finishes.
