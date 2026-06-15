@@ -1,0 +1,125 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>MuxRunner</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="stylesheet" href="styles.css" />
+    <link
+      rel="icon"
+      href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>⚡</text></svg>"
+    />
+  </head>
+  <body>
+    <div class="app">
+      <aside class="sidebar">
+        <div class="brand">
+          <div class="brand-mark">⚡</div>
+          <div>
+            <div class="brand-name">MuxRunner</div>
+            <div class="brand-sub">tmux command orchestrator</div>
+          </div>
+        </div>
+        <nav class="nav">
+          <button class="nav-item active" data-view="compose">
+            <span class="nav-ico">✎</span> Compose
+          </button>
+          <button class="nav-item" data-view="sessions">
+            <span class="nav-ico">◴</span> Sessions
+            <span class="badge" id="sessions-count">0</span>
+          </button>
+          <button class="nav-item" data-view="history">
+            <span class="nav-ico">⧗</span> History
+            <span class="badge" id="history-count">0</span>
+          </button>
+        </nav>
+        <div class="sidebar-foot">
+          <span class="dot" id="conn-dot"></span>
+          <span id="conn-label">connecting…</span>
+        </div>
+      </aside>
+
+      <main class="main">
+        <!-- COMPOSE ------------------------------------------------------>
+        <section class="view" id="view-compose">
+          <header class="view-head">
+            <h1>Compose a command set</h1>
+            <p>
+              Name it, then enter one bash command per line. A fresh tmux session
+              runs them in order — if a line exits non-zero, execution pauses so
+              you can attach and take over.
+            </p>
+          </header>
+          <div class="compose-card">
+            <label class="field">
+              <span>Name</span>
+              <input id="set-name" type="text" placeholder="e.g. deploy-staging" />
+            </label>
+            <label class="field">
+              <span>Commands <em>(one per line)</em></span>
+              <textarea
+                id="set-commands"
+                spellcheck="false"
+                placeholder="cd ~/project&#10;npm ci&#10;npm run build&#10;npm test"
+              ></textarea>
+            </label>
+            <div class="compose-actions">
+              <span class="hint" id="compose-hint"></span>
+              <button class="btn primary" id="run-btn">▶ Run command set</button>
+            </div>
+          </div>
+        </section>
+
+        <!-- SESSIONS ----------------------------------------------------->
+        <section class="view hidden" id="view-sessions">
+          <header class="view-head">
+            <h1>Live sessions</h1>
+            <p>Running &amp; retained tmux sessions. Click a card to watch output.</p>
+          </header>
+          <div class="sessions-grid" id="sessions-grid"></div>
+          <div class="empty" id="sessions-empty">No active sessions yet.</div>
+        </section>
+
+        <!-- HISTORY ------------------------------------------------------>
+        <section class="view hidden" id="view-history">
+          <header class="view-head">
+            <h1>History</h1>
+            <p>Every run, parsed from its log file. Expand a command to see output.</p>
+          </header>
+          <div class="history-list" id="history-list"></div>
+          <div class="empty" id="history-empty">No runs recorded yet.</div>
+        </section>
+      </main>
+
+      <!-- DETAIL DRAWER -------------------------------------------------->
+      <div class="drawer-scrim hidden" id="drawer-scrim"></div>
+      <aside class="drawer hidden" id="drawer">
+        <header class="drawer-head">
+          <div>
+            <div class="drawer-title" id="drawer-title">—</div>
+            <div class="drawer-sub" id="drawer-sub"></div>
+          </div>
+          <button class="icon-btn" id="drawer-close" title="Close">✕</button>
+        </header>
+        <div class="drawer-attach">
+          <code id="drawer-attach-cmd"></code>
+          <button class="btn ghost sm" id="drawer-copy">Copy attach</button>
+        </div>
+        <div class="drawer-steps" id="drawer-steps"></div>
+        <div class="drawer-console-head">
+          <span>Live output</span>
+          <span class="drawer-console-status" id="drawer-live-status"></span>
+        </div>
+        <pre class="console" id="drawer-console"></pre>
+        <footer class="drawer-foot">
+          <button class="btn danger" id="drawer-kill">⏻ Close session</button>
+          <a class="btn ghost" id="drawer-rawlog" target="_blank">Raw log ↗</a>
+        </footer>
+      </aside>
+
+      <div class="toast" id="toast"></div>
+    </div>
+    <script src="app.js"></script>
+  </body>
+</html>
