@@ -85,8 +85,15 @@
         <section class="view hidden" id="view-history">
           <header class="view-head">
             <h1>History</h1>
-            <p>Every run, parsed from its log file. Expand a command to see output.</p>
+            <p>
+              Every run, parsed from its log file. Expand a command to see output,
+              tick commands to re-send them into Compose.
+            </p>
           </header>
+          <div class="history-tools">
+            <button class="btn ghost sm" id="hist-expand-all">⤢ Expand all</button>
+            <button class="btn ghost sm" id="hist-collapse-all">⤡ Collapse all</button>
+          </div>
           <div class="history-list" id="history-list"></div>
           <div class="empty" id="history-empty">No runs recorded yet.</div>
         </section>

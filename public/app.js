@@ -5,7 +5,9 @@ const $$ = (sel, el = document) => [...el.querySelectorAll(sel)];
 const state = {
   runs: new Map(), // id -> summary
   details: new Map(), // id -> full meta (lazy)
-  live: new Map(), // id -> rolling output buffer
+  live: new Map(), // id -> rolling raw output buffer
+  stepLive: new Map(), // id -> Map(idx -> live per-command output)
+  drawerOpenSteps: new Set(), // expanded step idxs in the open drawer
   openDrawer: null, // id currently shown in drawer
   view: 'compose',
 };
@@ -39,6 +41,7 @@ function connect() {
       if (state.openDrawer === r.id) renderDrawer(r.id);
     } else if (msg.type === 'run:output') {
       appendLive(msg.id, msg.chunk);
+      if (msg.idx != null) appendStepLive(msg.id, msg.idx, msg.chunk);
     }
   };
 }
@@ -70,6 +73,35 @@ function appendLive(id, chunk) {
     c.textContent = buf;
     if (atBottom) c.scrollTop = c.scrollHeight;
   }
+}
+
+// Accumulate output for a single command as it streams, for the live parsed view.
+function appendStepLive(id, idx, chunk) {
+  const meta = state.details.get(id);
+  const step = meta && meta.commands ? meta.commands[idx - 1] : null;
+  // Skip the echoed "$ <cmd>" banner — the command is already the step header.
+  if (step && chunk === '$ ' + step.text + '\n') return;
+  let m = state.stepLive.get(id);
+  if (!m) { m = new Map(); state.stepLive.set(id, m); }
+  let buf = (m.get(idx) || '') + chunk;
+  if (buf.length > 200000) buf = buf.slice(-150000);
+  m.set(idx, buf);
+  if (state.openDrawer === id) updateDrawerStepLive(idx, buf);
+}
+
+// Best output for a command: finalized log output if present, else live buffer.
+function getStepOutput(id, step) {
+  if (step.output && step.output.length) return step.output;
+  const m = state.stepLive.get(id);
+  return (m && m.get(step.idx)) || '';
+}
+
+function updateDrawerStepLive(idx, buf) {
+  const body = document.querySelector(`#drawer-steps .dstep[data-idx="${idx}"] .console`);
+  if (!body) return;
+  const atBottom = body.scrollTop + body.clientHeight >= body.scrollHeight - 40;
+  body.textContent = buf;
+  if (atBottom) body.scrollTop = body.scrollHeight;
 }
 
 // ---------- Navigation ----------
@@ -223,25 +255,91 @@ async function toggleHistory(id, row) {
   if (row.classList.contains('open')) await fillHistoryBody(id, row);
 }
 
+$('#hist-expand-all').addEventListener('click', async () => {
+  for (const row of $$('.hrow')) {
+    if (!row.classList.contains('open')) {
+      row.classList.add('open');
+      await fillHistoryBody(row.dataset.id, row);
+    }
+  }
+});
+$('#hist-collapse-all').addEventListener('click', () => {
+  $$('.hrow').forEach((row) => row.classList.remove('open'));
+});
+
 async function fillHistoryBody(id, row) {
   const body = row.querySelector('.hrow-body');
   const meta = await fetchDetail(id);
   body.innerHTML = '';
+
+  // Toolbar: select-all + "send selected to Compose".
+  const tools = document.createElement('div');
+  tools.className = 'cmd-tools';
+  tools.innerHTML = `
+    <label class="checkline"><input type="checkbox" class="sel-all" /> Select all</label>
+    <span class="cmd-tools-spacer"></span>
+    <button class="btn primary sm send-compose" disabled>→ Edit in Compose <span class="seln">(0)</span></button>`;
+  body.appendChild(tools);
+
   for (const c of meta.commands) {
     const cmd = document.createElement('div');
     cmd.className = 'cmd ' + (c.status === 'error' ? 'err' : '');
     const rcTxt = c.rc == null ? '' : `exit ${c.rc}`;
     cmd.innerHTML = `
       <div class="cmd-head">
+        <input type="checkbox" class="cmd-sel" data-idx="${c.idx}" />
         <span class="dotmark ${c.status}"></span>
         <span class="cmd-idx">${c.idx}</span>
         <span class="cmd-text">${esc(c.text)}</span>
         <span class="cmd-rc ${c.rc ? 'bad' : ''}">${rcTxt}</span>
+        <button class="mini-copy" title="Copy command">⧉</button>
       </div>
       <div class="cmd-body"><pre class="console">${esc(c.output || '')}</pre></div>`;
-    cmd.querySelector('.cmd-head').addEventListener('click', () => cmd.classList.toggle('open'));
+    cmd.querySelector('.cmd-head').addEventListener('click', (e) => {
+      if (e.target.classList.contains('cmd-sel')) return; // let checkbox toggle
+      if (e.target.classList.contains('mini-copy')) { copy(c.text); return; }
+      cmd.classList.toggle('open');
+    });
+    cmd.querySelector('.cmd-sel').addEventListener('change', () => updateSelState(body, meta));
     body.appendChild(cmd);
   }
+
+  tools.querySelector('.sel-all').addEventListener('change', (e) => {
+    $$('.cmd-sel', body).forEach((cb) => (cb.checked = e.target.checked));
+    updateSelState(body, meta);
+  });
+  tools.querySelector('.send-compose').addEventListener('click', () =>
+    sendToCompose(body, meta)
+  );
+}
+
+function selectedIdxs(body) {
+  return $$('.cmd-sel', body)
+    .filter((cb) => cb.checked)
+    .map((cb) => +cb.dataset.idx)
+    .sort((a, b) => a - b);
+}
+
+function updateSelState(body, meta) {
+  const sel = selectedIdxs(body);
+  const btn = body.querySelector('.send-compose');
+  btn.disabled = sel.length === 0;
+  btn.querySelector('.seln').textContent = `(${sel.length})`;
+  const all = $$('.cmd-sel', body);
+  body.querySelector('.sel-all').checked = all.length > 0 && sel.length === all.length;
+}
+
+// Load the ticked commands (in order) back into Compose for editing + re-run.
+function sendToCompose(body, meta) {
+  const sel = selectedIdxs(body);
+  if (!sel.length) return;
+  const byIdx = new Map(meta.commands.map((c) => [c.idx, c]));
+  const lines = sel.map((i) => byIdx.get(i).text);
+  $('#set-name').value = meta.name + '-edit';
+  $('#set-commands').value = lines.join('\n');
+  switchView('compose');
+  $('#set-commands').focus();
+  toast(`Loaded ${sel.length} command(s) into Compose`);
 }
 
 async function fetchDetail(id) {
@@ -268,6 +366,7 @@ $('#drawer-kill').addEventListener('click', async () => {
 
 async function openDrawer(id) {
   state.openDrawer = id;
+  state.drawerOpenSteps = new Set();
   $('#drawer').classList.remove('hidden');
   $('#drawer-scrim').classList.remove('hidden');
   // seed live buffer from server snapshot if we have nothing yet
@@ -308,13 +407,29 @@ function renderDrawer(id) {
     : r.status === 'closed' ? 'session closed' : r.status;
 
   const steps = $('#drawer-steps');
-  steps.innerHTML = (meta ? meta.commands : []).map((c) => `
-    <div class="dstep ${c.status}">
-      <span class="dotmark ${c.status}"></span>
-      <span class="cmd-idx">${c.idx}</span>
-      <span class="cmd-text">${esc(c.text)}</span>
-      <span class="cmd-rc ${c.rc ? 'bad' : ''}">${c.rc == null ? '' : 'exit ' + c.rc}</span>
-    </div>`).join('');
+  steps.innerHTML = '';
+  for (const c of meta ? meta.commands : []) {
+    const open = state.drawerOpenSteps.has(c.idx);
+    const el = document.createElement('div');
+    el.className = 'dstep ' + c.status + (open ? ' open' : '');
+    el.dataset.idx = c.idx;
+    el.innerHTML = `
+      <div class="dstep-head">
+        <span class="dotmark ${c.status}"></span>
+        <span class="cmd-idx">${c.idx}</span>
+        <span class="cmd-text">${esc(c.text)}</span>
+        <span class="cmd-rc ${c.rc ? 'bad' : ''}">${c.rc == null ? '' : 'exit ' + c.rc}</span>
+        <button class="mini-copy" title="Copy command">⧉</button>
+      </div>
+      <div class="dstep-body"><pre class="console">${esc(getStepOutput(id, c))}</pre></div>`;
+    el.querySelector('.dstep-head').addEventListener('click', (e) => {
+      if (e.target.classList.contains('mini-copy')) { copy(c.text); return; }
+      el.classList.toggle('open');
+      if (el.classList.contains('open')) state.drawerOpenSteps.add(c.idx);
+      else state.drawerOpenSteps.delete(c.idx);
+    });
+    steps.appendChild(el);
+  }
 
   const console = $('#drawer-console');
   console.textContent = state.live.get(id) || '';

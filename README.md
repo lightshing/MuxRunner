@@ -25,14 +25,18 @@ for errors later.
 - 🔌 **Attach & take over** — every card shows a copy-paste `tmux attach …`
   command. On error, you land at an interactive prompt **in the same shell
   state** (cwd/env preserved).
-- 📡 **Live output** — watch a running session stream in real time over
-  WebSocket, or copy the attach command and use your own terminal.
+- 📡 **Live output, parsed in real time** — watch a running session in the
+  drawer: each command is its own expandable block whose output streams live as
+  it runs (and shows everything captured so far), plus a raw full-stream view.
+  Or copy the attach command and use your own terminal.
 - ♻️ **Sessions are retained** after finishing (success *or* error). Close them
   with one click when you're done.
 - 🗂️ **Persistent logs** — the full tmux record is saved to
   `./logs/<name>_<timestamp>.log`, with a structured `.json` sidecar.
 - 🕗 **History browser** — parse any past run, expand each command to see its
-  output, with errored commands highlighted.
+  output, with errored commands highlighted. **Expand/Collapse all**, **copy any
+  single command**, and **tick a subset of commands to re-send them (in order)
+  into Compose** — edit, then launch a fresh run.
 
 ---
 
@@ -92,7 +96,10 @@ Then open **http://localhost:1369**.
 
 5. **History** — the *History* tab lists every run parsed from its log. Expand a
    run, then expand any command to see its captured output. Errored commands are
-   marked in red.
+   marked in red. Use **Expand all / Collapse all** to sweep through runs, the
+   **⧉** button to copy any single command, or **tick commands** and hit
+   **→ Edit in Compose** to load that exact subset (in order) back into the
+   editor for tweaking and re-running as a new task.
 
 ---
 
