@@ -9,6 +9,7 @@ import { WebSocketServer } from 'ws';
 import { PORT, HOST, LOG_DIR } from './lib/config.js';
 import { manager } from './lib/store.js';
 import { isTmuxAvailable } from './lib/tmux.js';
+import { stripAnsi } from './lib/util.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -58,7 +59,10 @@ async function main() {
     if (!run) return res.status(404).json({ error: 'not found' });
     try {
       const data = await fsp.readFile(path.join(LOG_DIR, run.logFile), 'utf8');
-      res.type('text/plain').send(data);
+      // Default to a clean, ANSI-stripped view (the on-disk file keeps the full
+      // raw terminal record). Pass ?raw=1 for the unfiltered byte stream.
+      const out = 'raw' in req.query ? data : stripAnsi(data);
+      res.type('text/plain; charset=utf-8').send(out);
     } catch {
       res.status(404).json({ error: 'log missing' });
     }

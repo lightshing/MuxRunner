@@ -237,6 +237,12 @@ button, input, textarea { font-family: inherit; }
   background: var(--bg); border: 1px solid var(--border); border-radius: 10px; padding: 8px 10px 8px 14px;
 }
 .drawer-attach code { font-family: var(--mono); font-size: 12.5px; color: var(--accent); flex: 1; overflow: auto; white-space: nowrap; }
+.drawer-steps-head {
+  display: flex; align-items: center; gap: 10px; padding: 8px 22px 6px;
+  font-size: 12px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.5px;
+}
+.drawer-steps-head .spacer { flex: 1; }
+.drawer-steps-head .drawer-console-status { text-transform: none; letter-spacing: 0; color: var(--faint); }
 .drawer-steps { padding: 0 22px 10px; display: flex; flex-direction: column; gap: 4px; max-height: 42vh; overflow: auto; }
 .dstep { border-radius: 8px; border: 1px solid transparent; }
 .dstep.open { border-color: var(--border); background: var(--bg-2); }

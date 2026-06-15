@@ -255,27 +255,18 @@ async function toggleHistory(id, row) {
   if (row.classList.contains('open')) await fillHistoryBody(id, row);
 }
 
-$('#hist-expand-all').addEventListener('click', async () => {
-  for (const row of $$('.hrow')) {
-    if (!row.classList.contains('open')) {
-      row.classList.add('open');
-      await fillHistoryBody(row.dataset.id, row);
-    }
-  }
-});
-$('#hist-collapse-all').addEventListener('click', () => {
-  $$('.hrow').forEach((row) => row.classList.remove('open'));
-});
-
 async function fillHistoryBody(id, row) {
   const body = row.querySelector('.hrow-body');
   const meta = await fetchDetail(id);
   body.innerHTML = '';
 
-  // Toolbar: select-all + "send selected to Compose".
+  // Toolbar: expand/collapse all of THIS run's command outputs, select-all,
+  // and "send selected to Compose".
   const tools = document.createElement('div');
   tools.className = 'cmd-tools';
   tools.innerHTML = `
+    <button class="btn ghost sm exp-all">Expand all</button>
+    <button class="btn ghost sm col-all">Collapse all</button>
     <label class="checkline"><input type="checkbox" class="sel-all" /> Select all</label>
     <span class="cmd-tools-spacer"></span>
     <button class="btn primary sm send-compose" disabled>→ Edit in Compose <span class="seln">(0)</span></button>`;
@@ -308,6 +299,12 @@ async function fillHistoryBody(id, row) {
     $$('.cmd-sel', body).forEach((cb) => (cb.checked = e.target.checked));
     updateSelState(body, meta);
   });
+  tools.querySelector('.exp-all').addEventListener('click', () =>
+    $$('.cmd', body).forEach((c) => c.classList.add('open'))
+  );
+  tools.querySelector('.col-all').addEventListener('click', () =>
+    $$('.cmd', body).forEach((c) => c.classList.remove('open'))
+  );
   tools.querySelector('.send-compose').addEventListener('click', () =>
     sendToCompose(body, meta)
   );
@@ -362,6 +359,16 @@ $('#drawer-kill').addEventListener('click', async () => {
   if (!confirm('Close this tmux session? The log is kept in History.')) return;
   await fetch('/api/runs/' + id + '/close', { method: 'POST' });
   toast('Session closed');
+});
+$('#dstep-expand-all').addEventListener('click', () => {
+  const meta = state.details.get(state.openDrawer);
+  if (!meta) return;
+  meta.commands.forEach((c) => state.drawerOpenSteps.add(c.idx));
+  $$('#drawer-steps .dstep').forEach((el) => el.classList.add('open'));
+});
+$('#dstep-collapse-all').addEventListener('click', () => {
+  state.drawerOpenSteps.clear();
+  $$('#drawer-steps .dstep').forEach((el) => el.classList.remove('open'));
 });
 
 async function openDrawer(id) {

@@ -90,10 +90,6 @@
               tick commands to re-send them into Compose.
             </p>
           </header>
-          <div class="history-tools">
-            <button class="btn ghost sm" id="hist-expand-all">⤢ Expand all</button>
-            <button class="btn ghost sm" id="hist-collapse-all">⤡ Collapse all</button>
-          </div>
           <div class="history-list" id="history-list"></div>
           <div class="empty" id="history-empty">No runs recorded yet.</div>
         </section>
@@ -113,15 +109,21 @@
           <code id="drawer-attach-cmd"></code>
           <button class="btn ghost sm" id="drawer-copy">Copy attach</button>
         </div>
+        <div class="drawer-steps-head">
+          <span>Commands</span>
+          <span class="drawer-console-status" id="drawer-live-status"></span>
+          <span class="spacer"></span>
+          <button class="btn ghost sm" id="dstep-expand-all">Expand all</button>
+          <button class="btn ghost sm" id="dstep-collapse-all">Collapse all</button>
+        </div>
         <div class="drawer-steps" id="drawer-steps"></div>
         <div class="drawer-console-head">
-          <span>Live output</span>
-          <span class="drawer-console-status" id="drawer-live-status"></span>
+          <span>Raw stream</span>
         </div>
         <pre class="console" id="drawer-console"></pre>
         <footer class="drawer-foot">
           <button class="btn danger" id="drawer-kill">⏻ Close session</button>
-          <a class="btn ghost" id="drawer-rawlog" target="_blank">Raw log ↗</a>
+          <a class="btn ghost" id="drawer-rawlog" target="_blank">Full log ↗</a>
         </footer>
       </aside>
 
