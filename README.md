@@ -33,6 +33,9 @@ for errors later.
   with one click when you're done.
 - 🗂️ **Persistent logs** — the full tmux record is saved to
   `./logs/<name>_<timestamp>.log`, with a structured `.json` sidecar.
+- ⏱️ **Wall-clock timing** — each command's run time is measured precisely by
+  the shell (bash microsecond clock), plus a total for the whole set. Shown on
+  session cards, in the live drawer (per-command + total), and in History.
 - 🕗 **History browser** — parse any past run, expand each command to see its
   output, with errored commands highlighted. **Expand/Collapse all**, **copy any
   single command**, and **tick a subset of commands to re-send them (in order)

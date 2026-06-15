@@ -202,6 +202,14 @@ button, input, textarea { font-family: inherit; }
 .cmd.err .cmd-text { color: var(--red); }
 .cmd-rc { font-size: 11px; color: var(--muted); }
 .cmd-rc.bad { color: var(--red); }
+.cmd-dur {
+  font-size: 11px; color: var(--faint); flex: 0 0 auto; white-space: nowrap;
+  background: var(--bg-2); border: 1px solid var(--border); border-radius: 20px; padding: 1px 8px;
+}
+.cmd-dur.run { color: var(--accent); }
+.drawer-steps-total {
+  text-transform: none; letter-spacing: 0; color: var(--accent); font-weight: 600; font-size: 12px;
+}
 .cmd-body { display: none; padding: 0 12px 12px; }
 .cmd.open .cmd-body { display: block; }
 .dotmark { width: 9px; height: 9px; border-radius: 50%; flex: 0 0 auto; }

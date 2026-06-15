@@ -54,7 +54,39 @@ function toSummary(meta) {
     id: meta.id, name: meta.name, session: meta.session, status: meta.status,
     cwd: meta.cwd, createdAt: meta.createdAt, finishedAt: meta.finishedAt,
     logFile: meta.logFile, attach: meta.attach, total, done, errored,
+    durationMs: runTiming(meta.commands, meta.finishedAt).durationMs,
   };
+}
+
+// Wall-clock timing for a run (first command start → last finish / run end).
+function runTiming(commands, finishedAt) {
+  let startedAt = null, endedAt = null;
+  for (const c of commands || []) {
+    if (c.startedAt && (startedAt == null || c.startedAt < startedAt)) startedAt = c.startedAt;
+    if (c.finishedAt && (endedAt == null || c.finishedAt > endedAt)) endedAt = c.finishedAt;
+  }
+  if (finishedAt && (endedAt == null || finishedAt > endedAt)) endedAt = finishedAt;
+  return { startedAt, endedAt, durationMs: startedAt != null && endedAt != null ? endedAt - startedAt : null };
+}
+
+// Duration of a single command (ms), or null if not measurable yet.
+// Prefer the precise shell-measured value; fall back to poll timestamps.
+function stepDurationMs(c) {
+  if (c.durationMs != null && c.durationMs >= 0) return c.durationMs;
+  if (c.startedAt && c.finishedAt) return c.finishedAt - c.startedAt;
+  return null;
+}
+
+// Human-friendly duration: 840ms · 3.2s · 1m 05s · 1h 02m.
+function fmtDuration(ms) {
+  if (ms == null) return '';
+  if (ms < 1000) return `${ms}ms`;
+  const s = ms / 1000;
+  if (s < 60) return `${s.toFixed(s < 10 ? 1 : 0)}s`;
+  const m = Math.floor(s / 60);
+  if (m < 60) return `${m}m ${String(Math.floor(s % 60)).padStart(2, '0')}s`;
+  const h = Math.floor(m / 60);
+  return `${h}h ${String(m % 60).padStart(2, '0')}m`;
 }
 
 function setConn(on) {
@@ -193,7 +225,9 @@ function renderSessions() {
         ${statusBadge(r.status)}
       </div>
       <div class="progress ${r.errored ? 'err' : ''}"><i style="width:${pct}%"></i></div>
-      <div class="session-meta">${r.done}/${r.total} steps</div>
+      <div class="session-meta">${r.done}/${r.total} steps${
+        r.durationMs != null ? ` · ⏱ ${fmtDuration(r.durationMs)}` : ''
+      }</div>
       <div class="steps-mini">${ticksFor(r.id)}</div>
       <div class="card-actions">
         <button class="btn ghost sm" data-act="view">Watch</button>
@@ -240,7 +274,7 @@ async function renderHistory() {
         <div class="hrow-spacer"></div>
         <div class="hrow-summary">${r.done}/${r.total} ok${
       r.errored ? ' · <span class="e">error</span>' : ''
-    }</div>
+    }${r.durationMs != null ? ` · ⏱ ${fmtDuration(r.durationMs)}` : ''}</div>
         ${statusBadge(r.status)}
       </div>
       <div class="hrow-body"></div>`;
@@ -276,12 +310,14 @@ async function fillHistoryBody(id, row) {
     const cmd = document.createElement('div');
     cmd.className = 'cmd ' + (c.status === 'error' ? 'err' : '');
     const rcTxt = c.rc == null ? '' : `exit ${c.rc}`;
+    const dur = fmtDuration(stepDurationMs(c));
     cmd.innerHTML = `
       <div class="cmd-head">
         <input type="checkbox" class="cmd-sel" data-idx="${c.idx}" />
         <span class="dotmark ${c.status}"></span>
         <span class="cmd-idx">${c.idx}</span>
         <span class="cmd-text">${esc(c.text)}</span>
+        ${dur ? `<span class="cmd-dur">⏱ ${dur}</span>` : ''}
         <span class="cmd-rc ${c.rc ? 'bad' : ''}">${rcTxt}</span>
         <button class="mini-copy" title="Copy command">⧉</button>
       </div>
@@ -413,10 +449,14 @@ function renderDrawer(id) {
     : r.status === 'completed' ? '✓ finished (session retained)'
     : r.status === 'closed' ? 'session closed' : r.status;
 
+  const t = meta ? runTiming(meta.commands, meta.finishedAt) : { durationMs: null };
+  $('#drawer-steps-total').textContent = t.durationMs != null ? `⏱ ${fmtDuration(t.durationMs)} total` : '';
+
   const steps = $('#drawer-steps');
   steps.innerHTML = '';
   for (const c of meta ? meta.commands : []) {
     const open = state.drawerOpenSteps.has(c.idx);
+    const dur = fmtDuration(stepDurationMs(c));
     const el = document.createElement('div');
     el.className = 'dstep ' + c.status + (open ? ' open' : '');
     el.dataset.idx = c.idx;
@@ -425,6 +465,7 @@ function renderDrawer(id) {
         <span class="dotmark ${c.status}"></span>
         <span class="cmd-idx">${c.idx}</span>
         <span class="cmd-text">${esc(c.text)}</span>
+        ${dur ? `<span class="cmd-dur">⏱ ${dur}</span>` : c.status === 'running' ? '<span class="cmd-dur run">running…</span>' : ''}
         <span class="cmd-rc ${c.rc ? 'bad' : ''}">${c.rc == null ? '' : 'exit ' + c.rc}</span>
         <button class="mini-copy" title="Copy command">⧉</button>
       </div>
