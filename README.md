@@ -1,5 +1,7 @@
 # ⚡ MuxRunner
 
+**English** · [简体中文](README.zh-CN.md)
+
 A modern, web-based **command runner** that executes named command sets
 sequentially inside **tmux** sessions — with live output, automatic pausing on
 error, and fully persistent logs.
@@ -176,6 +178,7 @@ Environment variables (all optional):
 | `MUXRUNNER_PORT`     | `1369`        | HTTP/WebSocket port                      |
 | `MUXRUNNER_HOST`     | `127.0.0.1`   | Bind address                             |
 | `MUXRUNNER_LOG_DIR`  | `./logs`      | Where logs + metadata are written        |
+| `MUXRUNNER_SESSION_CWD` | _(app's parent dir)_ | Working dir new tmux sessions start in |
 | `TELEGRAM_BOT_TOKEN` | _(unset)_     | Bot token; overrides `telegram.config.json` |
 | `TELEGRAM_CHAT_ID`   | _(unset)_     | Target chat for push; overrides config file |
 | `TELEGRAM_ENABLED`   | `1`           | Set `0` to keep the token but disable Telegram |
@@ -355,4 +358,4 @@ WebSocket at `/ws` pushes `snapshot`, `run:update`, and `run:output` messages.
 
 ## License
 
-MIT
+[MIT](LICENSE)
