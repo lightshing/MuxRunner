@@ -56,13 +56,23 @@
               <span>Name</span>
               <input id="set-name" type="text" placeholder="e.g. deploy-staging" />
             </label>
+            <div class="pwd-line" title="New tmux sessions start in this directory">
+              <span class="pwd-ico">⌂</span>
+              <span class="pwd-label">Starts in</span>
+              <code id="session-cwd">…</code>
+            </div>
             <label class="field">
               <span>Commands <em>(one per line)</em></span>
-              <textarea
-                id="set-commands"
-                spellcheck="false"
-                placeholder="cd ~/project&#10;npm ci&#10;npm run build&#10;npm test"
-              ></textarea>
+              <div class="code-editor">
+                <div class="code-gutter" aria-hidden="true">
+                  <div class="code-gutter-inner" id="cmd-gutter"></div>
+                </div>
+                <textarea
+                  id="set-commands"
+                  spellcheck="false"
+                  placeholder="cd ~/project&#10;npm ci&#10;npm run build&#10;npm test"
+                ></textarea>
+              </div>
             </label>
             <div class="compose-actions">
               <span class="hint" id="compose-hint"></span>

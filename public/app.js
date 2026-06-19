@@ -149,6 +149,77 @@ function switchView(view) {
 }
 
 // ---------- Compose ----------
+// Show the absolute directory new tmux sessions start in.
+async function loadConfig() {
+  try {
+    const res = await fetch('/api/config');
+    if (!res.ok) return;
+    const cfg = await res.json();
+    if (cfg.sessionCwd) {
+      const el = $('#session-cwd');
+      el.textContent = cfg.sessionCwd;
+      el.title = cfg.sessionCwd;
+    }
+  } catch {}
+}
+
+// ----- Line-number gutter for the commands editor -----
+// Numbers logical lines; soft-wrapped continuation rows get a ↪ so wrapping is
+// visually distinct from a real newline. A hidden mirror measures how many
+// visual rows each line occupies at the textarea's current width.
+const cmdInput = $('#set-commands');
+const cmdGutter = $('#cmd-gutter');
+let cmdMirror;
+
+function gutterMirror(ta) {
+  if (!cmdMirror) {
+    cmdMirror = document.createElement('div');
+    cmdMirror.setAttribute('aria-hidden', 'true');
+    Object.assign(cmdMirror.style, {
+      position: 'absolute', visibility: 'hidden', left: '-9999px', top: '0', padding: '0',
+    });
+    document.body.appendChild(cmdMirror);
+  }
+  const cs = getComputedStyle(ta);
+  Object.assign(cmdMirror.style, {
+    fontFamily: cs.fontFamily, fontSize: cs.fontSize, lineHeight: cs.lineHeight,
+    letterSpacing: cs.letterSpacing, whiteSpace: 'pre-wrap',
+    wordBreak: cs.wordBreak, overflowWrap: cs.overflowWrap, tabSize: cs.tabSize,
+    width: ta.clientWidth - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight) + 'px',
+  });
+  return cmdMirror;
+}
+
+function lineHeightPx(ta) {
+  const cs = getComputedStyle(ta);
+  let lh = parseFloat(cs.lineHeight);
+  if (Number.isNaN(lh)) lh = parseFloat(cs.fontSize) * 1.2;
+  return lh;
+}
+
+function rebuildGutter() {
+  const m = gutterMirror(cmdInput);
+  const lh = lineHeightPx(cmdInput);
+  const lines = cmdInput.value.split('\n');
+  let out = '';
+  for (let i = 0; i < lines.length; i++) {
+    m.textContent = lines[i].length ? lines[i] : ' ';
+    const rows = Math.max(1, Math.round(m.offsetHeight / lh));
+    out += i + 1 + '\n';
+    for (let r = 1; r < rows; r++) out += '↪\n';
+  }
+  cmdGutter.textContent = out;
+  syncGutterScroll();
+}
+
+function syncGutterScroll() {
+  cmdGutter.style.transform = `translateY(${-cmdInput.scrollTop}px)`;
+}
+
+cmdInput.addEventListener('input', rebuildGutter);
+cmdInput.addEventListener('scroll', syncGutterScroll);
+window.addEventListener('resize', rebuildGutter);
+
 $('#run-btn').addEventListener('click', runSet);
 async function runSet() {
   const name = $('#set-name').value.trim();
@@ -170,6 +241,7 @@ async function runSet() {
     toast(`Launched “${data.name}” in tmux`);
     $('#set-commands').value = '';
     $('#set-name').value = '';
+    rebuildGutter();
     switchView('sessions');
     setTimeout(() => openDrawer(data.id), 150);
   } catch (e) {
@@ -370,6 +442,7 @@ function sendToCompose(body, meta) {
   const lines = sel.map((i) => byIdx.get(i).text);
   $('#set-name').value = meta.name + '-edit';
   $('#set-commands').value = lines.join('\n');
+  rebuildGutter();
   switchView('compose');
   $('#set-commands').focus();
   toast(`Loaded ${sel.length} command(s) into Compose`);
@@ -519,4 +592,6 @@ async function loadInitial() {
 }
 
 loadInitial();
+loadConfig();
+rebuildGutter();
 connect();

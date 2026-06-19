@@ -18,7 +18,10 @@ for errors later.
 ## Features
 
 - 🧩 **Compose & name command sets** — one bash command per line, in a clean,
-  light, polished (non-terminal-looking) UI.
+  light, polished (non-terminal-looking) UI. The editor shows **line numbers**
+  (soft-wrapped rows are marked with `↪` so you can tell a wrap from a real
+  newline) and the Compose view displays the **absolute working directory** the
+  fresh tmux session will start in.
 - 🖥️ **Each set runs in its own tmux session** — run many concurrently.
 - ▶️ **Strict sequential execution** — line _N+1_ starts only after line _N_
   finishes.
@@ -141,7 +144,9 @@ npm start
 ## Usage
 
 1. **Compose** — go to the *Compose* tab, name your set (e.g. `deploy-staging`),
-   and type one bash command per line:
+   and type one bash command per line. The *Starts in* line shows the absolute
+   directory the session will begin in, and the gutter numbers each line (a `↪`
+   marks a soft-wrapped continuation row):
 
    ```
    cd ~/project

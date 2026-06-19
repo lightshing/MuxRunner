@@ -83,7 +83,7 @@ button, input, textarea { font-family: inherit; }
 /* ---------- Compose ---------- */
 .compose-card {
   background: var(--panel); border: 1px solid var(--border);
-  border-radius: var(--radius); padding: 24px; max-width: 760px; box-shadow: var(--shadow);
+  border-radius: var(--radius); padding: 24px; max-width: 1040px; box-shadow: var(--shadow);
 }
 .field { display: block; margin-bottom: 18px; }
 .field > span { display: block; font-size: 13px; color: var(--muted); margin-bottom: 8px; }
@@ -93,11 +93,47 @@ button, input, textarea { font-family: inherit; }
   color: var(--text); border-radius: 10px; padding: 12px 14px; font-size: 14px;
   outline: none; transition: border 0.15s, box-shadow 0.15s;
 }
-.field textarea {
-  min-height: 220px; resize: vertical; font-family: var(--mono); line-height: 1.6;
-}
 .field input:focus, .field textarea:focus {
   border-color: var(--accent); box-shadow: 0 0 0 3px rgba(109, 139, 255, 0.15);
+}
+
+/* The directory a fresh tmux session starts in. */
+.pwd-line {
+  display: flex; align-items: center; gap: 8px; margin-bottom: 18px;
+  padding: 9px 12px; background: var(--bg-2); border: 1px solid var(--border-2);
+  border-radius: 10px; font-size: 13px; min-width: 0;
+}
+.pwd-ico { color: var(--accent); }
+.pwd-label { color: var(--muted); flex: 0 0 auto; }
+.pwd-line code {
+  font-family: var(--mono); font-size: 12.5px; color: var(--text);
+  overflow: auto; white-space: nowrap; min-width: 0; flex: 1;
+}
+
+/* Line-numbered command editor. The gutter mirrors the textarea row-for-row;
+   soft-wrapped continuation rows show a ↪ instead of a number, so a wrap can
+   be told apart from a real new line. */
+.code-editor {
+  display: flex; background: var(--bg-2); border: 1px solid var(--border-2);
+  border-radius: 10px; overflow: hidden; transition: border 0.15s, box-shadow 0.15s;
+}
+.code-editor:focus-within {
+  border-color: var(--accent); box-shadow: 0 0 0 3px rgba(109, 139, 255, 0.15);
+}
+.code-gutter {
+  flex: 0 0 auto; overflow: hidden; background: var(--panel-2);
+  border-right: 1px solid var(--border); user-select: none;
+}
+.code-gutter-inner {
+  padding: 12px 10px 12px 14px; min-width: 38px; text-align: right;
+  font-family: var(--mono); font-size: 13.5px; line-height: 1.6;
+  color: var(--faint); white-space: pre; will-change: transform;
+}
+.code-editor textarea {
+  flex: 1 1 auto; min-width: 0; min-height: 240px; resize: vertical;
+  border: none; outline: none; background: transparent; color: var(--text);
+  font-family: var(--mono); font-size: 13.5px; line-height: 1.6; padding: 12px 14px;
+  white-space: pre-wrap; overflow-wrap: break-word; word-break: break-word;
 }
 .compose-actions { display: flex; align-items: center; justify-content: flex-end; gap: 16px; }
 .hint { margin-right: auto; font-size: 13px; color: var(--muted); }

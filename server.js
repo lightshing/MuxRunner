@@ -6,7 +6,7 @@ import { fileURLToPath } from 'node:url';
 import express from 'express';
 import { WebSocketServer } from 'ws';
 
-import { PORT, HOST, LOG_DIR } from './lib/config.js';
+import { PORT, HOST, LOG_DIR, SESSION_CWD } from './lib/config.js';
 import { manager } from './lib/store.js';
 import { isTmuxAvailable } from './lib/tmux.js';
 import { stripAnsi } from './lib/util.js';
@@ -29,6 +29,12 @@ async function main() {
   app.use(express.static(path.join(__dirname, 'public')));
 
   // --- REST API ---------------------------------------------------------
+  // The absolute working directory a fresh tmux session starts in, so the
+  // Compose view can show users where their commands will run from.
+  app.get('/api/config', (_req, res) => {
+    res.json({ sessionCwd: SESSION_CWD });
+  });
+
   app.get('/api/runs', (_req, res) => {
     res.json(manager.list());
   });
