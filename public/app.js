@@ -45,7 +45,12 @@ function connect() {
       state.runs.set(r.id, toSummary(r));
       renderAll();
       if (state.openDrawer === r.id) {
-        if (state.liveTimer && !LIVE_POLL.has(r.status)) stopLivePoll();
+        if (state.liveTimer && !LIVE_POLL.has(r.status)) {
+          // Run just went non-live: drop the capture-pane poller and replace its
+          // frozen, possibly-truncated snapshot with the complete log.
+          stopLivePoll();
+          loadLogStream(r.id);
+        }
         renderDrawer(r.id);
       }
     } else if (msg.type === 'run:output') {
@@ -64,6 +69,7 @@ function toSummary(meta) {
     id: meta.id, name: meta.name, session: meta.session, status: meta.status,
     cwd: meta.cwd, createdAt: meta.createdAt, finishedAt: meta.finishedAt,
     logFile: meta.logFile, attach: meta.attach, total, done, errored,
+    steps: meta.commands.map((c) => c.status),
     startedAt: t.startedAt, durationMs: t.durationMs,
   };
 }
@@ -174,6 +180,28 @@ function appendLive(id, chunk) {
     c.textContent = buf;
     if (atBottom) c.scrollTop = c.scrollHeight;
   }
+}
+
+// Once a run is no longer live, the Raw stream must come from the on-disk log,
+// not the capture-pane snapshot. capture-pane is a bounded terminal grid (capped
+// at the tmux history-limit) and — because polling stops the instant the run
+// completes — it freezes ~one poll interval before the end, so the final burst
+// of output and the completion lines never land in it. The log (written by
+// pipe-pane) is the complete record, so pull from it here.
+async function loadLogStream(id) {
+  try {
+    const res = await fetch('/api/runs/' + id + '/log');
+    if (!res.ok) return;
+    const text = await res.text();
+    state.live.set(id, text);
+    // Only paint if the poller isn't currently driving this console.
+    if (state.openDrawer === id && !state.liveTimer) {
+      const c = $('#drawer-console');
+      const atBottom = c.scrollTop + c.clientHeight >= c.scrollHeight - 40;
+      c.textContent = text;
+      if (atBottom) c.scrollTop = c.scrollHeight;
+    }
+  } catch {}
 }
 
 // Accumulate output for a single command as it streams, for the live parsed view.
@@ -392,9 +420,18 @@ function renderSessions() {
 }
 
 function ticksFor(id) {
+  // Prefer full meta (carries the latest per-command statuses); otherwise fall
+  // back to the summary's lightweight `steps` array so refreshing mid-run paints
+  // the right swatches — done (green), the running one (pulsing purple), pending
+  // (grey) — instead of an all-grey row while we wait for a run:update.
   const meta = state.details.get(id);
-  const cmds = meta ? meta.commands : new Array(state.runs.get(id)?.total || 0).fill({ status: 'pending' });
-  return cmds.map((c) => `<span class="tick ${c.status}"></span>`).join('');
+  const summary = state.runs.get(id);
+  const statuses = meta && meta.commands
+    ? meta.commands.map((c) => c.status)
+    : summary && summary.steps
+      ? summary.steps
+      : new Array(summary?.total || 0).fill('pending');
+  return statuses.map((s) => `<span class="tick ${s}"></span>`).join('');
 }
 
 function statusBadge(s) {
@@ -575,12 +612,20 @@ async function openDrawer(id) {
   state.drawerOpenSteps = new Set();
   $('#drawer').classList.remove('hidden');
   $('#drawer-scrim').classList.remove('hidden');
-  // seed live buffer from server snapshot if we have nothing yet
-  if (!state.live.get(id)) {
-    try {
-      const res = await fetch('/api/runs/' + id + '/live');
-      if (res.ok) state.live.set(id, (await res.json()).output || '');
-    } catch {}
+  // Seed the Raw stream. A live run uses the rendered grid (capture-pane) so
+  // in-place \r refreshes (spinners, progress bars) display correctly, and the
+  // poller keeps it fresh. A finished run uses the complete log — capture-pane
+  // would miss the tail and anything past the history-limit.
+  const seed = state.runs.get(id);
+  if (seed && LIVE_POLL.has(seed.status)) {
+    if (!state.live.get(id)) {
+      try {
+        const res = await fetch('/api/runs/' + id + '/live');
+        if (res.ok) state.live.set(id, (await res.json()).output || '');
+      } catch {}
+    }
+  } else {
+    await loadLogStream(id);
   }
   await fetchDetail(id);
   renderDrawer(id);

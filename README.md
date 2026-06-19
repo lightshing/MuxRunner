@@ -34,10 +34,13 @@ for errors later.
   drawer: each command is its own expandable block whose output streams live as
   it runs (and shows everything captured so far), plus a raw full-stream view.
   While a session is running, the Raw stream mirrors the rendered terminal grid
-  (polled from `capture-pane`), so in-place updates — spinners, ticking seconds,
-  progress bars — show their current value instead of nothing. Self-refreshing
-  lines are also collapsed to their final frame in the parsed log, so a ticking
-  counter no longer balloons into a wall of every frame.
+  (polled from `capture-pane` over the full scrollback), so in-place updates —
+  spinners, ticking seconds, progress bars — show their current value instead of
+  nothing. Once a run finishes, the Raw stream switches to the complete on-disk
+  log, so the final burst of output and the closing lines are always there (the
+  grid snapshot freezes the moment polling stops, so it can miss the tail).
+  Self-refreshing lines are also collapsed to their final frame in the parsed
+  log, so a ticking counter no longer balloons into a wall of every frame.
   Or copy the attach command and use your own terminal.
 - ♻️ **Sessions are retained** after finishing (success *or* error). **End any
   session in one click — straight from its card** (no need to open the drawer) —
@@ -51,6 +54,11 @@ for errors later.
 - ⏲️ **Live elapsed counters** — while a set is running, its card ticks the
   total elapsed time (now − start) once a second, and the live drawer ticks both
   the running total and the **seconds the current command has been executing**.
+- 🟪 **Progress swatches** — each session card shows one square per command
+  (done = green, the running one pulses purple, pending = grey). The per-command
+  statuses ride along with the list/snapshot payload, so **refreshing the page
+  mid-run paints the swatches immediately** — no all-grey row while a single
+  long-running command is in flight (which fires no status update of its own).
 - 🕗 **History browser** — parse any past run, expand each command to see its
   output, with errored commands highlighted. **Expand/Collapse all**, **copy any
   single command**, and **tick a subset of commands to re-send them (in order)
