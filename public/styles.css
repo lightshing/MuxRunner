@@ -315,6 +315,24 @@ button, input, textarea { font-family: inherit; }
 #drawer-console { margin: 0 22px; flex: 1; }
 .drawer-foot { display: flex; gap: 10px; padding: 16px 22px; border-top: 1px solid var(--border); margin-top: 14px; }
 
+/* ---------- Confirm modal ---------- */
+.modal-scrim {
+  position: fixed; inset: 0; background: rgba(20, 30, 60, 0.34);
+  z-index: 70; display: flex; align-items: center; justify-content: center;
+}
+.modal {
+  background: var(--panel); border: 1px solid var(--border-2); border-radius: 14px;
+  padding: 22px 24px; width: min(420px, 92vw); box-shadow: var(--shadow);
+  animation: modalpop 0.16s ease;
+}
+@keyframes modalpop {
+  from { transform: translateY(8px) scale(0.98); opacity: 0.4; }
+  to { transform: none; opacity: 1; }
+}
+.modal-title { font-size: 17px; font-weight: 700; letter-spacing: -0.2px; margin-bottom: 8px; }
+.modal-body { font-size: 14px; color: var(--muted); line-height: 1.55; margin-bottom: 22px; }
+.modal-actions { display: flex; justify-content: flex-end; gap: 10px; }
+
 /* ---------- Toast ---------- */
 .toast {
   position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%) translateY(20px);

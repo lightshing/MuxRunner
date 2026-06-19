@@ -39,13 +39,18 @@ for errors later.
   lines are also collapsed to their final frame in the parsed log, so a ticking
   counter no longer balloons into a wall of every frame.
   Or copy the attach command and use your own terminal.
-- ♻️ **Sessions are retained** after finishing (success *or* error). Close them
-  with one click when you're done.
+- ♻️ **Sessions are retained** after finishing (success *or* error). **End any
+  session in one click — straight from its card** (no need to open the drawer) —
+  via an in-app confirmation styled like the rest of the UI (no jarring native
+  browser dialog).
 - 🗂️ **Persistent logs** — the full tmux record is saved to
   `./logs/<name>_<timestamp>.log`, with a structured `.json` sidecar.
 - ⏱️ **Wall-clock timing** — each command's run time is measured precisely by
   the shell (bash microsecond clock), plus a total for the whole set. Shown on
   session cards, in the live drawer (per-command + total), and in History.
+- ⏲️ **Live elapsed counters** — while a set is running, its card ticks the
+  total elapsed time (now − start) once a second, and the live drawer ticks both
+  the running total and the **seconds the current command has been executing**.
 - 🕗 **History browser** — parse any past run, expand each command to see its
   output, with errored commands highlighted. **Expand/Collapse all**, **copy any
   single command**, and **tick a subset of commands to re-send them (in order)
@@ -161,10 +166,12 @@ npm start
    ```
 
 2. **Run** — hit *Run command set*. A new tmux session starts and the *Sessions*
-   tab opens with a live card.
+   tab opens with a live card that ticks the elapsed run time second by second.
 
 3. **Watch** — click a card (or *Watch*) to open the live drawer: streaming
-   output, per-step status, the attach command, and a *Close session* button.
+   output, per-step status, the attach command, a live counter on the currently
+   running command, and a *Close session* button. You can also **End** a session
+   directly from its card.
 
 4. **On error** — if a command fails, the run pauses. Copy the attach command,
    run it in your terminal, and you'll be dropped into the live shell exactly

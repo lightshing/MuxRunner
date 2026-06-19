@@ -59,11 +59,12 @@ function toSummary(meta) {
   const total = meta.commands.length;
   const done = meta.commands.filter((c) => c.status === 'done').length;
   const errored = meta.commands.some((c) => c.status === 'error');
+  const t = runTiming(meta.commands, meta.finishedAt);
   return {
     id: meta.id, name: meta.name, session: meta.session, status: meta.status,
     cwd: meta.cwd, createdAt: meta.createdAt, finishedAt: meta.finishedAt,
     logFile: meta.logFile, attach: meta.attach, total, done, errored,
-    durationMs: runTiming(meta.commands, meta.finishedAt).durationMs,
+    startedAt: t.startedAt, durationMs: t.durationMs,
   };
 }
 
@@ -84,6 +85,30 @@ function stepDurationMs(c) {
   if (c.durationMs != null && c.durationMs >= 0) return c.durationMs;
   if (c.startedAt && c.finishedAt) return c.finishedAt - c.startedAt;
   return null;
+}
+
+// Whole-second elapsed for live, ticking counters: 7s · 1m 05s · 1h 02m.
+// Distinct from fmtDuration (which shows sub-second decimals) so a counter
+// updated once per second doesn't jitter its fractional digit.
+function fmtElapsed(ms) {
+  if (ms == null || ms < 0) ms = 0;
+  const s = Math.floor(ms / 1000);
+  if (s < 60) return `${s}s`;
+  const m = Math.floor(s / 60);
+  if (m < 60) return `${m}m ${String(s % 60).padStart(2, '0')}s`;
+  const h = Math.floor(m / 60);
+  return `${h}h ${String(m % 60).padStart(2, '0')}m`;
+}
+
+// Refresh every live elapsed counter on the page. Each such element carries a
+// data-elapsed-since="<startMs>" and we render (now - start). Driven by a 1s
+// interval and also called right after any render so counters fill instantly.
+function tickElapsed() {
+  const now = Date.now();
+  for (const el of $$('[data-elapsed-since]')) {
+    const since = +el.dataset.elapsedSince;
+    if (since) el.textContent = fmtElapsed(now - since);
+  }
 }
 
 // Human-friendly duration: 840ms · 3.2s · 1m 05s · 1h 02m.
@@ -330,6 +355,13 @@ function renderSessions() {
   grid.innerHTML = '';
   for (const r of list) {
     const pct = r.total ? Math.round((r.done / r.total) * 100) : 0;
+    // Running sessions show a live, ticking elapsed (now − execution start);
+    // finished ones keep their final measured duration.
+    const live = r.status === 'running' || r.status === 'starting';
+    const since = r.startedAt || r.createdAt;
+    const durHtml = live
+      ? ` · ⏱ <span data-elapsed-since="${since}"></span>`
+      : r.durationMs != null ? ` · ⏱ ${fmtDuration(r.durationMs)}` : '';
     const card = document.createElement('div');
     card.className = 'session-card';
     card.innerHTML = `
@@ -341,21 +373,22 @@ function renderSessions() {
         ${statusBadge(r.status)}
       </div>
       <div class="progress ${r.errored ? 'err' : ''}"><i style="width:${pct}%"></i></div>
-      <div class="session-meta">${r.done}/${r.total} steps${
-        r.durationMs != null ? ` · ⏱ ${fmtDuration(r.durationMs)}` : ''
-      }</div>
+      <div class="session-meta">${r.done}/${r.total} steps${durHtml}</div>
       <div class="steps-mini">${ticksFor(r.id)}</div>
       <div class="card-actions">
         <button class="btn ghost sm" data-act="view">Watch</button>
         <button class="btn ghost sm" data-act="copy">Copy attach</button>
+        <button class="btn danger sm" data-act="end">⏻ End</button>
       </div>`;
     card.addEventListener('click', (e) => {
       const act = e.target.dataset.act;
       if (act === 'copy') { copy(r.attach); e.stopPropagation(); }
+      else if (act === 'end') { e.stopPropagation(); endSession(r.id); }
       else openDrawer(r.id);
     });
     grid.appendChild(card);
   }
+  tickElapsed();
 }
 
 function ticksFor(id) {
@@ -506,13 +539,26 @@ $('#drawer-copy').addEventListener('click', () => {
   const r = state.runs.get(state.openDrawer);
   if (r) copy(r.attach);
 });
-$('#drawer-kill').addEventListener('click', async () => {
-  const id = state.openDrawer;
-  if (!id) return;
-  if (!confirm('Close this tmux session? The log is kept in History.')) return;
-  await fetch('/api/runs/' + id + '/close', { method: 'POST' });
-  toast('Session closed');
+$('#drawer-kill').addEventListener('click', () => {
+  if (state.openDrawer) endSession(state.openDrawer);
 });
+
+// Close a tmux session after an in-app confirmation (no native dialog).
+async function endSession(id) {
+  const r = state.runs.get(id);
+  const ok = await confirmDialog({
+    title: 'Close session?',
+    body: `End the tmux session ${r ? `“${r.name}”` : ''} and stop any running command. The log is kept in History.`,
+    confirmText: '⏻ Close session',
+  });
+  if (!ok) return;
+  try {
+    await fetch('/api/runs/' + id + '/close', { method: 'POST' });
+    toast('Session closed');
+  } catch {
+    toast('Failed to close session');
+  }
+}
 $('#dstep-expand-all').addEventListener('click', () => {
   const meta = state.details.get(state.openDrawer);
   if (!meta) return;
@@ -568,8 +614,16 @@ function renderDrawer(id) {
     : r.status === 'completed' ? '✓ finished (session retained)'
     : r.status === 'closed' ? 'session closed' : r.status;
 
-  const t = meta ? runTiming(meta.commands, meta.finishedAt) : { durationMs: null };
-  $('#drawer-steps-total').textContent = t.durationMs != null ? `⏱ ${fmtDuration(t.durationMs)} total` : '';
+  const t = meta ? runTiming(meta.commands, meta.finishedAt) : { durationMs: null, startedAt: null };
+  // While running, tick the total live (now − execution start); else show the
+  // final measured total.
+  if (r.status === 'running' || r.status === 'starting') {
+    const since = (t.startedAt || r.createdAt);
+    $('#drawer-steps-total').innerHTML = since
+      ? `⏱ <span data-elapsed-since="${since}"></span> total` : '';
+  } else {
+    $('#drawer-steps-total').textContent = t.durationMs != null ? `⏱ ${fmtDuration(t.durationMs)} total` : '';
+  }
 
   const steps = $('#drawer-steps');
   steps.innerHTML = '';
@@ -584,7 +638,12 @@ function renderDrawer(id) {
         <span class="dotmark ${c.status}"></span>
         <span class="cmd-idx">${c.idx}</span>
         <span class="cmd-text">${esc(c.text)}</span>
-        ${dur ? `<span class="cmd-dur">⏱ ${dur}</span>` : c.status === 'running' ? '<span class="cmd-dur run">running…</span>' : ''}
+        ${
+          dur ? `<span class="cmd-dur">⏱ ${dur}</span>`
+          : c.status === 'running' && c.startedAt
+            ? `<span class="cmd-dur run">⏱ <span data-elapsed-since="${c.startedAt}"></span></span>`
+          : c.status === 'running' ? '<span class="cmd-dur run">running…</span>' : ''
+        }
         <span class="cmd-rc ${c.rc ? 'bad' : ''}">${c.rc == null ? '' : 'exit ' + c.rc}</span>
         <button class="mini-copy" title="Copy command">⧉</button>
       </div>
@@ -604,6 +663,44 @@ function renderDrawer(id) {
     const console = $('#drawer-console');
     console.textContent = state.live.get(id) || '';
   }
+  tickElapsed();
+}
+
+// ---------- Confirm modal ----------
+// In-app confirmation styled like the rest of the UI (replaces window.confirm).
+// Resolves true on confirm, false on cancel / scrim / Esc.
+function confirmDialog({ title, body, confirmText = 'Confirm', cancelText = 'Cancel', danger = true }) {
+  return new Promise((resolve) => {
+    const scrim = $('#modal-scrim');
+    $('#modal-title').textContent = title;
+    $('#modal-body').textContent = body;
+    const ok = $('#modal-confirm');
+    const cancel = $('#modal-cancel');
+    ok.textContent = confirmText;
+    cancel.textContent = cancelText;
+    ok.className = 'btn ' + (danger ? 'danger' : 'primary');
+    scrim.classList.remove('hidden');
+    const cleanup = (result) => {
+      scrim.classList.add('hidden');
+      ok.removeEventListener('click', onOk);
+      cancel.removeEventListener('click', onCancel);
+      scrim.removeEventListener('mousedown', onScrim);
+      document.removeEventListener('keydown', onKey);
+      resolve(result);
+    };
+    const onOk = () => cleanup(true);
+    const onCancel = () => cleanup(false);
+    const onScrim = (e) => { if (e.target === scrim) cleanup(false); };
+    const onKey = (e) => {
+      if (e.key === 'Escape') cleanup(false);
+      else if (e.key === 'Enter') cleanup(true);
+    };
+    ok.addEventListener('click', onOk);
+    cancel.addEventListener('click', onCancel);
+    scrim.addEventListener('mousedown', onScrim);
+    document.addEventListener('keydown', onKey);
+    ok.focus();
+  });
 }
 
 // ---------- Utils ----------
@@ -645,3 +742,5 @@ loadInitial();
 loadConfig();
 rebuildGutter();
 connect();
+// Tick all live elapsed counters (running cards + the open drawer) once a second.
+setInterval(tickElapsed, 1000);
