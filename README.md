@@ -33,6 +33,11 @@ for errors later.
 - 📡 **Live output, parsed in real time** — watch a running session in the
   drawer: each command is its own expandable block whose output streams live as
   it runs (and shows everything captured so far), plus a raw full-stream view.
+  While a session is running, the Raw stream mirrors the rendered terminal grid
+  (polled from `capture-pane`), so in-place updates — spinners, ticking seconds,
+  progress bars — show their current value instead of nothing. Self-refreshing
+  lines are also collapsed to their final frame in the parsed log, so a ticking
+  counter no longer balloons into a wall of every frame.
   Or copy the attach command and use your own terminal.
 - ♻️ **Sessions are retained** after finishing (success *or* error). Close them
   with one click when you're done.

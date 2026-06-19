@@ -9,10 +9,16 @@ const state = {
   stepLive: new Map(), // id -> Map(idx -> live per-command output)
   drawerOpenSteps: new Set(), // expanded step idxs in the open drawer
   openDrawer: null, // id currently shown in drawer
+  liveTimer: null, // capture-pane poll interval for the open live drawer
   view: 'compose',
 };
 
 const LIVE_ACTIVE = new Set(['starting', 'running', 'paused', 'completed']);
+// Statuses where the pane is actively producing output worth polling. We poll
+// capture-pane (the rendered terminal grid) so in-place refreshes — spinners,
+// ticking seconds, progress bars — show live, which the line-by-line WS stream
+// cannot convey.
+const LIVE_POLL = new Set(['starting', 'running']);
 
 // ---------- WebSocket ----------
 let ws;
@@ -38,7 +44,10 @@ function connect() {
       state.details.set(r.id, r);
       state.runs.set(r.id, toSummary(r));
       renderAll();
-      if (state.openDrawer === r.id) renderDrawer(r.id);
+      if (state.openDrawer === r.id) {
+        if (state.liveTimer && !LIVE_POLL.has(r.status)) stopLivePoll();
+        renderDrawer(r.id);
+      }
     } else if (msg.type === 'run:output') {
       appendLive(msg.id, msg.chunk);
       if (msg.idx != null) appendStepLive(msg.id, msg.idx, msg.chunk);
@@ -94,7 +103,42 @@ function setConn(on) {
   $('#conn-label').textContent = on ? 'connected' : 'reconnecting…';
 }
 
+// Poll the rendered terminal grid for the open live drawer and mirror it into
+// the Raw stream pane. capture-pane reflects \r/ANSI overwrites in place, so a
+// ticking-seconds line shows its current value rather than a flushed-on-newline
+// blob. While this owns the console, the WS line stream (appendLive) stands down.
+function startLivePoll(id) {
+  stopLivePoll();
+  const r = state.runs.get(id);
+  if (!r || !LIVE_POLL.has(r.status)) return;
+  const tick = async () => {
+    if (state.openDrawer !== id) return stopLivePoll();
+    const cur = state.runs.get(id);
+    if (!cur || !LIVE_POLL.has(cur.status)) return stopLivePoll();
+    try {
+      const res = await fetch('/api/runs/' + id + '/live');
+      if (!res.ok || state.openDrawer !== id) return;
+      const out = (await res.json()).output || '';
+      state.live.set(id, out);
+      const c = $('#drawer-console');
+      const atBottom = c.scrollTop + c.clientHeight >= c.scrollHeight - 40;
+      c.textContent = out;
+      if (atBottom) c.scrollTop = c.scrollHeight;
+    } catch {}
+  };
+  state.liveTimer = setInterval(tick, 700);
+  tick();
+}
+
+function stopLivePoll() {
+  if (state.liveTimer) clearInterval(state.liveTimer);
+  state.liveTimer = null;
+}
+
 function appendLive(id, chunk) {
+  // The live poller owns the console (and live buffer) for the run it's polling;
+  // skip the line-by-line path so the two don't fight over the same pane.
+  if (state.liveTimer && state.openDrawer === id) return;
   let buf = state.live.get(id) || '';
   buf += chunk;
   if (buf.length > 400000) buf = buf.slice(-300000);
@@ -496,9 +540,11 @@ async function openDrawer(id) {
   renderDrawer(id);
   const c = $('#drawer-console');
   c.scrollTop = c.scrollHeight;
+  startLivePoll(id);
 }
 
 function closeDrawer() {
+  stopLivePoll();
   state.openDrawer = null;
   $('#drawer').classList.add('hidden');
   $('#drawer-scrim').classList.add('hidden');
@@ -552,8 +598,12 @@ function renderDrawer(id) {
     steps.appendChild(el);
   }
 
-  const console = $('#drawer-console');
-  console.textContent = state.live.get(id) || '';
+  // While the live poller is driving this console, let it own the content so a
+  // re-render (e.g. on a status update) doesn't overwrite the latest grid.
+  if (!(state.liveTimer && state.openDrawer === id)) {
+    const console = $('#drawer-console');
+    console.textContent = state.live.get(id) || '';
+  }
 }
 
 // ---------- Utils ----------
