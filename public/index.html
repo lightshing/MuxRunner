@@ -74,6 +74,38 @@
                 ></textarea>
               </div>
             </label>
+            <label class="field">
+              <span>When to run <em>(trigger)</em></span>
+              <select id="trigger-type">
+                <option value="now">▶ Run now</option>
+                <option value="hold">✋ Hold — start manually later</option>
+                <option value="time">⏰ At a specific time</option>
+                <option value="delay">⏳ After a delay</option>
+                <option value="after">🔗 After another session finishes</option>
+              </select>
+            </label>
+            <div class="trigger-opt hidden" id="trigger-time-row">
+              <label class="field">
+                <span>Start at</span>
+                <input id="trigger-time" type="datetime-local" />
+              </label>
+            </div>
+            <div class="trigger-opt hidden" id="trigger-delay-row">
+              <label class="field inline-num">
+                <span>Hours</span>
+                <input id="trigger-h" type="number" min="0" value="0" />
+              </label>
+              <label class="field inline-num">
+                <span>Minutes</span>
+                <input id="trigger-m" type="number" min="0" value="30" />
+              </label>
+            </div>
+            <div class="trigger-opt hidden" id="trigger-after-row">
+              <label class="field">
+                <span>Wait for this session to finish</span>
+                <select id="trigger-after"></select>
+              </label>
+            </div>
             <div class="compose-actions">
               <span class="hint" id="compose-hint"></span>
               <button class="btn primary" id="run-btn">▶ Run command set</button>
@@ -87,6 +119,10 @@
             <h1>Live sessions</h1>
             <p>Running &amp; retained tmux sessions. Click a card to watch output.</p>
           </header>
+          <div class="pending-section hidden" id="pending-section">
+            <h2 class="section-title">⏳ Scheduled &amp; pending</h2>
+            <div class="sessions-grid" id="pending-grid"></div>
+          </div>
           <div class="sessions-grid" id="sessions-grid"></div>
           <div class="empty" id="sessions-empty">No active sessions yet.</div>
         </section>

@@ -4,6 +4,7 @@ const $$ = (sel, el = document) => [...el.querySelectorAll(sel)];
 
 const state = {
   runs: new Map(), // id -> summary
+  pending: new Map(), // id -> pending task summary (deferred / scheduled)
   details: new Map(), // id -> full meta (lazy)
   live: new Map(), // id -> rolling raw output buffer
   stepLive: new Map(), // id -> Map(idx -> live per-command output)
@@ -37,6 +38,14 @@ function connect() {
     if (msg.type === 'snapshot') {
       state.runs.clear();
       msg.runs.forEach((r) => state.runs.set(r.id, r));
+      state.pending.clear();
+      (msg.pending || []).forEach((p) => state.pending.set(p.id, p));
+      renderAll();
+    } else if (msg.type === 'pending:update') {
+      state.pending.set(msg.task.id, msg.task);
+      renderAll();
+    } else if (msg.type === 'pending:remove') {
+      state.pending.delete(msg.id);
       renderAll();
     } else if (msg.type === 'run:update') {
       const r = msg.run;
@@ -114,6 +123,11 @@ function tickElapsed() {
   for (const el of $$('[data-elapsed-since]')) {
     const since = +el.dataset.elapsedSince;
     if (since) el.textContent = fmtElapsed(now - since);
+  }
+  // Countdown timers for scheduled pending tasks: time until they fire.
+  for (const el of $$('[data-countdown-to]')) {
+    const at = +el.dataset.countdownTo;
+    if (at) el.textContent = at <= now ? 'now…' : fmtElapsed(at - now);
   }
 }
 
@@ -243,6 +257,7 @@ function switchView(view) {
   $$('.view').forEach((v) => v.classList.add('hidden'));
   $('#view-' + view).classList.remove('hidden');
   if (view === 'history') renderHistory();
+  if (view === 'compose' && triggerType.value === 'after') fillAfterOptions();
 }
 
 // ---------- Compose ----------
@@ -317,6 +332,66 @@ cmdInput.addEventListener('input', rebuildGutter);
 cmdInput.addEventListener('scroll', syncGutterScroll);
 window.addEventListener('resize', rebuildGutter);
 
+// ----- Trigger picker -----
+// Show only the inputs relevant to the chosen trigger; relabel the run button so
+// it reads as "schedule / hold / run" depending on the selection.
+const triggerType = $('#trigger-type');
+function syncTriggerUI() {
+  const t = triggerType.value;
+  $('#trigger-time-row').classList.toggle('hidden', t !== 'time');
+  $('#trigger-delay-row').classList.toggle('hidden', t !== 'delay');
+  $('#trigger-after-row').classList.toggle('hidden', t !== 'after');
+  if (t === 'after') fillAfterOptions();
+  const btn = $('#run-btn');
+  btn.textContent =
+    t === 'now' ? '▶ Run command set'
+    : t === 'hold' ? '✋ Save — start manually later'
+    : t === 'after' ? '🔗 Queue after session'
+    : '⏳ Schedule command set';
+}
+triggerType.addEventListener('change', syncTriggerUI);
+
+// Populate the "wait for this session" picker with the currently-active runs.
+function fillAfterOptions() {
+  const sel = $('#trigger-after');
+  const prev = sel.value;
+  const runs = [...state.runs.values()]
+    .filter((r) => r.status === 'starting' || r.status === 'running')
+    .sort((a, b) => b.createdAt - a.createdAt);
+  sel.innerHTML = runs.length
+    ? runs.map((r) => `<option value="${esc(r.id)}">${esc(r.name)}</option>`).join('')
+    : '<option value="">— no running sessions —</option>';
+  if (runs.some((r) => r.id === prev)) sel.value = prev;
+}
+
+// Build the trigger payload from the form, or null if the selection is invalid.
+function buildTrigger() {
+  const t = triggerType.value;
+  if (t === 'now') return { type: 'now' };
+  if (t === 'hold') return { type: 'hold' };
+  if (t === 'time') {
+    const v = $('#trigger-time').value;
+    if (!v) { flagHint('Pick a start time.'); return null; }
+    const runAt = new Date(v).getTime();
+    if (!Number.isFinite(runAt)) { flagHint('That start time is invalid.'); return null; }
+    if (runAt <= Date.now()) { flagHint('Pick a start time in the future.'); return null; }
+    return { type: 'time', runAt };
+  }
+  if (t === 'delay') {
+    const h = Math.max(0, parseInt($('#trigger-h').value || '0', 10));
+    const m = Math.max(0, parseInt($('#trigger-m').value || '0', 10));
+    const delayMs = (h * 60 + m) * 60 * 1000;
+    if (delayMs <= 0) { flagHint('Set a delay of at least one minute.'); return null; }
+    return { type: 'delay', delayMs };
+  }
+  if (t === 'after') {
+    const dependsOn = $('#trigger-after').value;
+    if (!dependsOn) { flagHint('Pick a running session to wait for.'); return null; }
+    return { type: 'after', dependsOn };
+  }
+  return { type: 'now' };
+}
+
 $('#run-btn').addEventListener('click', runSet);
 async function runSet() {
   const name = $('#set-name').value.trim();
@@ -324,6 +399,8 @@ async function runSet() {
   const hint = $('#compose-hint');
   if (!name) return flagHint('Give the command set a name.');
   if (!commands.trim()) return flagHint('Add at least one command.');
+  const trigger = buildTrigger();
+  if (!trigger) return; // buildTrigger already flagged the problem
   hint.className = 'hint';
   hint.textContent = '';
   $('#run-btn').disabled = true;
@@ -331,16 +408,20 @@ async function runSet() {
     const res = await fetch('/api/runs', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ name, commands }),
+      body: JSON.stringify({ name, commands, trigger }),
     });
     const data = await res.json();
     if (!res.ok) throw new Error(data.error || 'failed');
-    toast(`Launched “${data.name}” in tmux`);
     $('#set-commands').value = '';
     $('#set-name').value = '';
     rebuildGutter();
     switchView('sessions');
-    setTimeout(() => openDrawer(data.id), 150);
+    if (data.kind === 'pending') {
+      toast(`Scheduled “${data.name}” — ${triggerLabel(data.trigger)}`);
+    } else {
+      toast(`Launched “${data.name}” in tmux`);
+      setTimeout(() => openDrawer(data.id), 150);
+    }
   } catch (e) {
     flagHint(e.message);
   } finally {
@@ -355,6 +436,7 @@ function flagHint(msg) {
 
 // ---------- Rendering ----------
 function renderAll() {
+  renderPending();
   renderSessions();
   updateCounts();
   if (state.view === 'history') renderHistory();
@@ -362,8 +444,113 @@ function renderAll() {
 
 function updateCounts() {
   const sessions = [...state.runs.values()].filter((r) => LIVE_ACTIVE.has(r.status));
-  $('#sessions-count').textContent = sessions.length;
+  $('#sessions-count').textContent = sessions.length + state.pending.size;
   $('#history-count').textContent = state.runs.size;
+}
+
+// Human description of a pending task's trigger (also used in toasts).
+function triggerLabel(t) {
+  if (!t) return '';
+  if (t.type === 'hold') return 'manual start';
+  if (t.type === 'time') return `at ${fmtTime(t.runAt)}`;
+  if (t.type === 'delay') return `at ${fmtTime(t.runAt)}`;
+  if (t.type === 'after') return `after “${t.dependsOnName || '…'}” finishes`;
+  return '';
+}
+
+function renderPending() {
+  const section = $('#pending-section');
+  const grid = $('#pending-grid');
+  const list = [...state.pending.values()].sort((a, b) => {
+    const da = a.trigger?.runAt || a.createdAt;
+    const db = b.trigger?.runAt || b.createdAt;
+    return da - db;
+  });
+  section.classList.toggle('hidden', list.length === 0);
+  grid.innerHTML = '';
+  for (const p of list) {
+    const t = p.trigger || {};
+    const card = document.createElement('div');
+    card.className = 'session-card pending-card';
+    const when =
+      (t.type === 'time' || t.type === 'delay') && t.runAt
+        ? `⏱ fires in <span data-countdown-to="${t.runAt}"></span>`
+        : t.type === 'after'
+          ? `🔗 ${esc(triggerLabel(t))}`
+          : '✋ manual start';
+    card.innerHTML = `
+      <div class="row">
+        <div>
+          <h3 title="${esc(p.name)}">${esc(p.name)}</h3>
+          <div class="session-meta">${esc(triggerLabel(t))}</div>
+        </div>
+        <span class="status pending">pending</span>
+      </div>
+      <div class="session-meta">${p.commands.length} step${p.commands.length === 1 ? '' : 's'} · ${when}</div>
+      <div class="card-actions">
+        <button class="btn primary sm" data-act="start">▶ Start now</button>
+        <button class="btn ghost sm" data-act="edit">✎ Edit</button>
+        <button class="btn danger sm" data-act="cancel">✕ Cancel</button>
+      </div>`;
+    card.addEventListener('click', (e) => {
+      const act = e.target.dataset.act;
+      if (act === 'start') { e.stopPropagation(); startPending(p.id); }
+      else if (act === 'cancel') { e.stopPropagation(); cancelPending(p.id); }
+      else if (act === 'edit') { e.stopPropagation(); editPending(p); }
+    });
+    grid.appendChild(card);
+  }
+  tickElapsed();
+}
+
+async function startPending(id) {
+  try {
+    const res = await fetch('/api/pending/' + id + '/start', { method: 'POST' });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'failed');
+    toast(`Started “${data.name}”`);
+    setTimeout(() => openDrawer(data.id), 150);
+  } catch (e) {
+    toast('Failed to start: ' + e.message);
+  }
+}
+
+async function cancelPending(id) {
+  const p = state.pending.get(id);
+  const ok = await confirmDialog({
+    title: 'Cancel pending task?',
+    body: `Remove ${p ? `“${p.name}”` : 'this task'} from the queue. It will not run.`,
+    confirmText: '✕ Cancel task',
+  });
+  if (!ok) return;
+  try {
+    await fetch('/api/pending/' + id + '/cancel', { method: 'POST' });
+    toast('Pending task cancelled');
+  } catch {
+    toast('Failed to cancel');
+  }
+}
+
+// Load a pending task back into Compose for editing, then drop the old one.
+function editPending(p) {
+  $('#set-name').value = p.name;
+  $('#set-commands').value = p.commands.join('\n');
+  const t = p.trigger || {};
+  triggerType.value = t.type === 'after' ? 'after' : t.type === 'time' || t.type === 'delay' ? 'time' : t.type === 'hold' ? 'hold' : 'now';
+  syncTriggerUI();
+  if (t.type === 'time' || t.type === 'delay') {
+    const d = new Date(t.runAt || Date.now());
+    // datetime-local wants local time without timezone suffix.
+    const pad = (n) => String(n).padStart(2, '0');
+    $('#trigger-time').value = `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  }
+  rebuildGutter();
+  switchView('compose');
+  cancelPendingSilently(p.id);
+  toast(`Loaded “${p.name}” into Compose`);
+}
+async function cancelPendingSilently(id) {
+  try { await fetch('/api/pending/' + id + '/cancel', { method: 'POST' }); } catch {}
 }
 
 function fmtTime(ts) {
@@ -775,10 +962,9 @@ function toast(msg) {
 // slow behind a proxy/tunnel); the socket then keeps things live.
 async function loadInitial() {
   try {
-    const res = await fetch('/api/runs');
-    if (!res.ok) return;
-    const runs = await res.json();
-    runs.forEach((r) => state.runs.set(r.id, r));
+    const [runsRes, pendRes] = await Promise.all([fetch('/api/runs'), fetch('/api/pending')]);
+    if (runsRes.ok) (await runsRes.json()).forEach((r) => state.runs.set(r.id, r));
+    if (pendRes.ok) (await pendRes.json()).forEach((p) => state.pending.set(p.id, p));
     renderAll();
   } catch {}
 }
@@ -786,6 +972,7 @@ async function loadInitial() {
 loadInitial();
 loadConfig();
 rebuildGutter();
+syncTriggerUI();
 connect();
 // Tick all live elapsed counters (running cards + the open drawer) once a second.
 setInterval(tickElapsed, 1000);

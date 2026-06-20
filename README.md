@@ -23,6 +23,20 @@ for errors later.
   newline) and the Compose view displays the **absolute working directory** the
   fresh tmux session will start in.
 - 🖥️ **Each set runs in its own tmux session** — run many concurrently.
+- ⏳ **Triggers — schedule, chain, or hold a set instead of running it now.**
+  When composing, pick *when to run*:
+  - **▶ Run now** — the default, launches immediately.
+  - **✋ Hold** — keep the set on the page and start it by hand later.
+  - **⏰ At a specific time** — fire at an absolute date/time.
+  - **⏳ After a delay** — fire *N* hours/minutes from now.
+  - **🔗 After another session finishes** — chain off a currently-running set;
+    fires the moment that set finishes executing (completed *or* paused on
+    error), **without waiting for its session to be closed**.
+
+  Deferred sets are **retained on the Sessions page** under *Scheduled &
+  pending*, each with a live countdown and **Start now / Edit / Cancel**
+  buttons — any trigger can always be started by hand. Pending tasks are
+  persisted to `./logs/.pending/`, so they survive a server restart.
 - ▶️ **Strict sequential execution** — line _N+1_ starts only after line _N_
   finishes.
 - ⏸️ **Auto-pause on error** — the first non-zero exit halts the rest and marks
@@ -65,9 +79,12 @@ for errors later.
   into Compose** — edit, then launch a fresh run.
 - 🤖 **Telegram bot** — get a push the moment a command set **starts**,
   **pauses on error**, or **ends** — each message carries the set name, command
-  count, progress, and the copy-paste `tmux attach …` command. Message the bot
-  back with `/sessions` to see what's running, each session's progress, and its
-  attach command from your phone. See [Telegram notifications](#telegram-notifications).
+  count, progress, and the copy-paste `tmux attach …` command. Commands live in
+  a **persistent bottom menu** (and the ☰ command menu) instead of being
+  repeated under every message — tap **📡 活动会话 / 📆 待执行 / 🗂️ 历史记录 /
+  ❓ 帮助**. The **待执行 (pending)** view lists every scheduled / held / chained
+  task with a one-tap **▶️ start** (and **✕ cancel**) button, so you can launch a
+  retained task straight from your phone. See [Telegram notifications](#telegram-notifications).
 
 ---
 
@@ -173,19 +190,26 @@ npm start
    npm test
    ```
 
-2. **Run** — hit *Run command set*. A new tmux session starts and the *Sessions*
+2. **Choose when to run** — the *When to run (trigger)* picker defaults to **Run
+   now**, but you can also **Hold** the set for a manual start, schedule it for a
+   **specific time** or **after a delay**, or chain it to start **after another
+   running session finishes**. Anything other than *Run now* is parked under
+   *Scheduled & pending* on the Sessions tab with a countdown and **Start now /
+   Edit / Cancel** controls (and is also startable from the Telegram bot).
+
+3. **Run** — hit *Run command set*. A new tmux session starts and the *Sessions*
    tab opens with a live card that ticks the elapsed run time second by second.
 
-3. **Watch** — click a card (or *Watch*) to open the live drawer: streaming
+4. **Watch** — click a card (or *Watch*) to open the live drawer: streaming
    output, per-step status, the attach command, a live counter on the currently
    running command, and a *Close session* button. You can also **End** a session
    directly from its card.
 
-4. **On error** — if a command fails, the run pauses. Copy the attach command,
+5. **On error** — if a command fails, the run pauses. Copy the attach command,
    run it in your terminal, and you'll be dropped into the live shell exactly
    where it stopped to investigate or fix things by hand.
 
-5. **History** — the *History* tab lists every run parsed from its log. Expand a
+6. **History** — the *History* tab lists every run parsed from its log. Expand a
    run, then expand any command to see its captured output. Errored commands are
    marked in red. Use **Expand all / Collapse all** to sweep through runs, the
    **⧉** button to copy any single command, or **tick commands** and hit
@@ -251,15 +275,21 @@ command set changes state — and ask it, from your phone, what's running.
 | ✅ **Ended** (completed) | name, command count, total wall-clock duration, `tmux attach …` |
 | ⏹️ **Closed**      | name, progress at close                                      |
 
-**Tap, don't type.** Every bot message carries an inline **button selector** —
-just tap **📡 活动会话 / 🗂️ 历史记录 / ❓ 帮助** instead of typing commands. The
-typed commands still work too:
+**Tap, don't type.** Commands live in a **persistent bottom menu** (a reply
+keyboard docked under the chat) and the **☰ command menu** next to the input box
+— so they're not repeated under every message. Tap **📡 活动会话 / 📆 待执行 /
+🗂️ 历史记录 / ❓ 帮助**. The typed commands still work too:
 
 | Command                | Reply                                                      |
 | ---------------------- | ---------------------------------------------------------- |
 | **📡 活动会话** / `/sessions` (`/status`, `/s`) | every active session: status, `done/total` progress, and its `tmux attach …` |
+| **📆 待执行** / `/pending` | every deferred / scheduled / held task, each with a one-tap **▶️ start** and **✕ cancel** button |
 | **🗂️ 历史记录** / `/all`  | finished runs grouped by outcome — ✅ completed, ⏸️ paused, ⏹️ closed |
 | **❓ 帮助** / `/help`     | the command list                                           |
+
+The **待执行 (pending)** view is how you launch a retained task from your phone:
+it lists each scheduled / delayed / chained / held set with its trigger, and the
+inline **▶️ start** button fires it right away (or **✕** drops it).
 
 Statuses use clean, distinct glyphs — ⏳ starting · ▶️ running · ⏸️ paused ·
 ✅ completed · ⏹️ closed — instead of garish red/green dots.
@@ -348,7 +378,8 @@ MuxRunner/
 ├── logs/                # created at runtime (git-ignored)
 │   ├── <name>_<ts>.log  # full tmux record
 │   ├── <id>.json        # structured run metadata
-│   └── .runners/        # generated runner scripts
+│   ├── .runners/        # generated runner scripts
+│   └── .pending/        # deferred / scheduled tasks (survive restarts)
 └── package.json
 ```
 
@@ -356,16 +387,32 @@ MuxRunner/
 
 ## REST API
 
-| Method | Endpoint                | Purpose                          |
-| ------ | ----------------------- | -------------------------------- |
-| `GET`  | `/api/runs`             | List all runs (summaries)        |
-| `POST` | `/api/runs`             | Create + start a run             |
-| `GET`  | `/api/runs/:id`         | Full run metadata + per-command  |
-| `GET`  | `/api/runs/:id/live`    | Current pane snapshot            |
-| `GET`  | `/api/runs/:id/log`     | Raw log file (text)              |
-| `POST` | `/api/runs/:id/close`   | Kill the tmux session            |
+| Method | Endpoint                     | Purpose                                   |
+| ------ | ---------------------------- | ----------------------------------------- |
+| `GET`  | `/api/runs`                  | List all runs (summaries)                 |
+| `POST` | `/api/runs`                  | Create a run — runs now, or defers it if a `trigger` is given |
+| `GET`  | `/api/runs/:id`              | Full run metadata + per-command           |
+| `GET`  | `/api/runs/:id/live`         | Current pane snapshot                      |
+| `GET`  | `/api/runs/:id/log`          | Raw log file (text)                        |
+| `POST` | `/api/runs/:id/close`        | Kill the tmux session                     |
+| `GET`  | `/api/pending`               | List deferred / scheduled / held tasks    |
+| `POST` | `/api/pending/:id/start`     | Launch a pending task now                  |
+| `POST` | `/api/pending/:id/cancel`    | Remove a pending task without running it   |
 
-WebSocket at `/ws` pushes `snapshot`, `run:update`, and `run:output` messages.
+`POST /api/runs` accepts an optional `trigger` in the JSON body. Without one (or
+with `{"type":"now"}`) the set launches immediately and the response is a run
+summary. Otherwise it's held in the pending queue and the response is a pending
+task (`{"kind":"pending", …}`). Trigger shapes:
+
+```jsonc
+{ "type": "hold" }                                  // start by hand later
+{ "type": "time",  "runAt": 1781990000000 }         // absolute epoch ms
+{ "type": "delay", "delayMs": 1800000 }             // N ms from creation
+{ "type": "after", "dependsOn": "<run id>" }        // when that run finishes
+```
+
+WebSocket at `/ws` pushes `snapshot` (now also carries `pending`), `run:update`,
+`run:output`, `pending:update`, and `pending:remove` messages.
 
 ---
 

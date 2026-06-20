@@ -41,15 +41,42 @@ async function main() {
 
   app.post('/api/runs', async (req, res) => {
     try {
-      const { name, commands } = req.body || {};
+      const { name, commands, trigger } = req.body || {};
       const list = Array.isArray(commands)
         ? commands
         : String(commands || '').split('\n');
-      const run = await manager.create(String(name || 'untitled'), list);
+      // A trigger of anything other than "now" defers the set into the pending
+      // queue instead of launching it immediately.
+      if (trigger && trigger.type && trigger.type !== 'now') {
+        const task = await manager.createPending(String(name || 'untitled'), list, undefined, trigger);
+        res.json(task.summary());
+      } else {
+        const run = await manager.create(String(name || 'untitled'), list);
+        res.json(run.summary());
+      }
+    } catch (err) {
+      res.status(400).json({ error: err.message });
+    }
+  });
+
+  // --- Pending (deferred / scheduled) command sets ----------------------
+  app.get('/api/pending', (_req, res) => {
+    res.json(manager.listPending());
+  });
+
+  app.post('/api/pending/:id/start', async (req, res) => {
+    try {
+      const run = await manager.firePending(req.params.id);
       res.json(run.summary());
     } catch (err) {
       res.status(400).json({ error: err.message });
     }
+  });
+
+  app.post('/api/pending/:id/cancel', async (req, res) => {
+    const ok = await manager.cancelPending(req.params.id);
+    if (!ok) return res.status(404).json({ error: 'not found' });
+    res.json({ ok: true });
   });
 
   app.get('/api/runs/:id', (req, res) => {
@@ -98,9 +125,11 @@ async function main() {
 
   manager.on('run:update', (meta) => broadcast({ type: 'run:update', run: meta }));
   manager.on('run:output', (payload) => broadcast({ type: 'run:output', ...payload }));
+  manager.on('pending:update', (task) => broadcast({ type: 'pending:update', task }));
+  manager.on('pending:remove', (payload) => broadcast({ type: 'pending:remove', ...payload }));
 
   wss.on('connection', (ws) => {
-    ws.send(JSON.stringify({ type: 'snapshot', runs: manager.list() }));
+    ws.send(JSON.stringify({ type: 'snapshot', runs: manager.list(), pending: manager.listPending() }));
   });
 
   server.listen(PORT, HOST, () => {

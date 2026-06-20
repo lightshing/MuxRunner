@@ -88,14 +88,20 @@ button, input, textarea { font-family: inherit; }
 .field { display: block; margin-bottom: 18px; }
 .field > span { display: block; font-size: 13px; color: var(--muted); margin-bottom: 8px; }
 .field em { font-style: normal; color: var(--faint); }
-.field input, .field textarea {
+.field input, .field textarea, .field select {
   width: 100%; background: var(--bg-2); border: 1px solid var(--border-2);
   color: var(--text); border-radius: 10px; padding: 12px 14px; font-size: 14px;
   outline: none; transition: border 0.15s, box-shadow 0.15s;
 }
-.field input:focus, .field textarea:focus {
+.field input:focus, .field textarea:focus, .field select:focus {
   border-color: var(--accent); box-shadow: 0 0 0 3px rgba(109, 139, 255, 0.15);
 }
+
+/* ---------- Trigger picker ---------- */
+/* Each option block holds the inputs for one trigger type; hidden until chosen. */
+.trigger-opt { display: flex; gap: 16px; flex-wrap: wrap; margin-bottom: 4px; }
+.trigger-opt .field { flex: 1 1 220px; }
+.field.inline-num { flex: 0 0 120px; }
 
 /* The directory a fresh tmux session starts in. */
 .pwd-line {
@@ -175,7 +181,21 @@ button, input, textarea { font-family: inherit; }
 .status.completed { color: var(--green); background: rgba(62,207,142,0.12); }
 .status.paused { color: var(--amber); background: rgba(245,185,69,0.12); }
 .status.closed { color: var(--faint); background: rgba(120,130,150,0.1); }
+.status.pending { color: var(--amber); background: rgba(245,185,69,0.12); }
+.status.pending::before { animation: pulse 1.8s infinite; }
 @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.35; } }
+
+/* ---------- Pending / scheduled section ---------- */
+.pending-section { margin-bottom: 26px; }
+.section-title { font-size: 14px; font-weight: 600; color: var(--muted); margin: 0 0 12px; }
+/* A dashed, amber-tinted edge marks cards as "not running yet". */
+.session-card.pending-card {
+  border-style: dashed; border-color: var(--border-2);
+  cursor: default; background: var(--panel);
+}
+.session-card.pending-card:hover { transform: none; border-color: var(--faint); }
+.session-card.pending-card .card-actions { margin-top: 14px; }
+[data-countdown-to] { font-variant-numeric: tabular-nums; color: var(--amber); font-weight: 600; }
 
 /* ---------- Sessions grid ---------- */
 .sessions-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 16px; }
