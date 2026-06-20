@@ -309,7 +309,7 @@ button, input, textarea { font-family: inherit; }
 .trigger-edit .ui-datetime { flex: 1; }
 
 /* Read-only command preview modal. */
-.preview-modal { width: 96vw; max-width: 96vw; display: flex; flex-direction: column; max-height: 80vh; }
+.modal.preview-modal { width: 96vw; max-width: 96vw; display: flex; flex-direction: column; max-height: 80vh; }
 .preview-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; margin-bottom: 14px; }
 .preview-sub { font-size: 12px; color: var(--faint); margin-top: 4px; }
 .preview-list {
