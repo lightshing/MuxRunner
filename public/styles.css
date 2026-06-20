@@ -182,11 +182,22 @@ button, input, textarea { font-family: inherit; }
 .session-card {
   background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius);
   padding: 18px; cursor: pointer; transition: border 0.15s, transform 0.1s; box-shadow: var(--shadow);
+  display: flex; flex-direction: column;
 }
 .session-card:hover { border-color: var(--border-2); transform: translateY(-2px); }
-.session-card .row { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
-.session-card h3 { margin: 0; font-size: 16px; letter-spacing: -0.2px; word-break: break-all; }
+/* Pin the badge to the top so it lines up regardless of title height. */
+.session-card .row { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; }
+.session-card .row > div { min-width: 0; }
+/* Always reserve two lines for the title; clamp longer names with an ellipsis
+   so the progress bar and step swatches below stay aligned across all cards. */
+.session-card h3 {
+  margin: 0; font-size: 16px; line-height: 1.3; letter-spacing: -0.2px; word-break: break-all;
+  display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2;
+  overflow: hidden; min-height: 2.6em;
+}
 .session-meta { font-size: 12px; color: var(--faint); margin-top: 2px; }
+/* Push the action row to the bottom so buttons align across same-row cards. */
+.session-card .card-actions { margin-top: auto; }
 .progress { height: 6px; background: var(--bg-2); border-radius: 6px; overflow: hidden; margin: 14px 0 10px; }
 .progress > i { display: block; height: 100%; background: linear-gradient(90deg, var(--accent), var(--accent-2)); transition: width 0.3s; }
 .progress.err > i { background: var(--red); }
@@ -196,7 +207,7 @@ button, input, textarea { font-family: inherit; }
 .tick.running { background: var(--accent); animation: pulse 1.2s infinite; }
 .tick.error { background: var(--red); }
 .tick.skipped { background: var(--amber); opacity: 0.5; }
-.card-actions { display: flex; gap: 8px; margin-top: 14px; }
+.card-actions { display: flex; gap: 8px; padding-top: 14px; }
 
 /* ---------- History ---------- */
 .history-tools { display: flex; gap: 8px; margin-bottom: 14px; }

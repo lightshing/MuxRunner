@@ -395,7 +395,7 @@ function renderSessions() {
     card.innerHTML = `
       <div class="row">
         <div>
-          <h3>${esc(r.name)}</h3>
+          <h3 title="${esc(r.name)}">${esc(r.name)}</h3>
           <div class="session-meta">${fmtTime(r.createdAt)}</div>
         </div>
         ${statusBadge(r.status)}
