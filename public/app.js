@@ -332,10 +332,233 @@ cmdInput.addEventListener('input', rebuildGutter);
 cmdInput.addEventListener('scroll', syncGutterScroll);
 window.addEventListener('resize', rebuildGutter);
 
+// ----- Custom form controls (UI-consistent, no browser-native widgets) -----
+
+// The viewer's local timezone as a UTC±H[:MM] string (e.g. UTC+8, UTC+5:30).
+function tzLabel() {
+  const off = -new Date().getTimezoneOffset(); // minutes east of UTC
+  const sign = off >= 0 ? '+' : '-';
+  const a = Math.abs(off);
+  const h = Math.floor(a / 60);
+  const m = a % 60;
+  return `UTC${sign}${h}${m ? ':' + String(m).padStart(2, '0') : ''}`;
+}
+
+function fmtDateTimeFull(ts) {
+  return new Date(ts).toLocaleString(undefined, {
+    year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit',
+  });
+}
+
+// Close every open custom dropdown except (optionally) one.
+function closeAllSelects(except) {
+  $$('.ui-select.open').forEach((el) => { if (el !== except) el.classList.remove('open'); });
+}
+
+// A styled dropdown that mirrors a native <select>: exposes .value (get/set)
+// and fires onChange. Built into the host element (data-empty = placeholder).
+class UISelect {
+  constructor(el, { options = [], value = null, onChange = null } = {}) {
+    this.el = el;
+    this.empty = el.dataset.empty || 'Select…';
+    this.onChange = onChange;
+    this._value = null;
+    this.options = [];
+    el.tabIndex = 0;
+    el.innerHTML =
+      '<span class="ui-select-label"></span><span class="ui-select-caret">▾</span>' +
+      '<div class="ui-select-menu"></div>';
+    this.labelEl = el.querySelector('.ui-select-label');
+    this.menuEl = el.querySelector('.ui-select-menu');
+    el.addEventListener('click', (e) => {
+      if (e.target.closest('.ui-select-opt')) return;
+      this.el.classList.contains('open') ? this.close() : this.open();
+    });
+    el.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); this.el.classList.toggle('open'); closeAllSelects(this.el); }
+      else if (e.key === 'Escape') this.close();
+    });
+    document.addEventListener('click', (e) => { if (!el.contains(e.target)) this.close(); });
+    this.setOptions(options, value);
+  }
+  setOptions(options, value) {
+    this.options = options.slice();
+    this.menuEl.innerHTML = options.length
+      ? options.map((o) => `<div class="ui-select-opt" data-value="${esc(o.value)}">${esc(o.label)}</div>`).join('')
+      : `<div class="ui-select-opt disabled">${esc(this.empty)}</div>`;
+    this.menuEl.querySelectorAll('.ui-select-opt:not(.disabled)').forEach((opt) =>
+      opt.addEventListener('click', (e) => { e.stopPropagation(); this.close(); this.select(opt.dataset.value); })
+    );
+    let v = value !== undefined ? value : this._value;
+    if (!options.some((o) => o.value === v)) v = options.length ? options[0].value : null;
+    this._value = undefined; // force a render
+    this.select(v, true);
+  }
+  get value() { return this._value == null ? '' : this._value; }
+  set value(v) { this.select(v); }
+  select(v, silent) {
+    const opt = this.options.find((o) => o.value === v);
+    const changed = this._value !== v;
+    this._value = v;
+    this.labelEl.textContent = opt ? opt.label : (this.options.length ? '' : this.empty);
+    this.labelEl.classList.toggle('placeholder', !opt);
+    this.menuEl.querySelectorAll('.ui-select-opt').forEach((o) => o.classList.toggle('sel', o.dataset.value === v));
+    if (changed && !silent && this.onChange) this.onChange(v);
+  }
+  open() { closeAllSelects(this.el); this.el.classList.add('open'); }
+  close() { this.el.classList.remove('open'); }
+}
+
+// A styled number stepper (− value +) replacing <input type="number">.
+class UIStepper {
+  constructor(el, onChange) {
+    this.min = el.dataset.min != null ? +el.dataset.min : 0;
+    this.max = el.dataset.max != null ? +el.dataset.max : Infinity;
+    this.onChange = onChange;
+    this._value = +el.dataset.value || 0;
+    el.innerHTML =
+      '<button type="button" class="ui-step-btn" data-d="-1">−</button>' +
+      '<input class="ui-step-input" inputmode="numeric" />' +
+      '<button type="button" class="ui-step-btn" data-d="1">+</button>';
+    this.input = el.querySelector('.ui-step-input');
+    this.input.value = this._value;
+    el.querySelectorAll('.ui-step-btn').forEach((b) =>
+      b.addEventListener('click', () => this._set(this._value + +b.dataset.d))
+    );
+    this.input.addEventListener('input', () => { this._value = this._clamp(parseInt(this.input.value || '0', 10) || 0); if (this.onChange) this.onChange(); });
+    this.input.addEventListener('blur', () => { this.input.value = this._value; });
+  }
+  _clamp(v) { return Math.max(this.min, Math.min(this.max, v)); }
+  _set(v) { this._value = this._clamp(v); this.input.value = this._value; if (this.onChange) this.onChange(); }
+  get value() { return this._value; }
+  set value(v) { this._set(+v || 0); }
+}
+
+// A styled date + time picker (calendar grid + hour/minute steppers) replacing
+// <input type="datetime-local">. Times are interpreted in the viewer's local
+// timezone, which is shown in the popup. .getTime() → epoch ms (or null).
+class UIDateTime {
+  constructor(el) {
+    this.el = el;
+    this.date = null; // chosen day (Date at local midnight) or null
+    const now = new Date();
+    this.viewY = now.getFullYear();
+    this.viewM = now.getMonth();
+    el.innerHTML =
+      '<div class="ui-dt-field" tabindex="0">' +
+        '<span class="ui-dt-text placeholder">Pick a date &amp; time</span>' +
+        '<span class="ui-select-caret">🗓</span>' +
+      '</div>' +
+      '<div class="ui-dt-pop">' +
+        '<div class="ui-dt-cal-head">' +
+          '<button type="button" class="ui-dt-nav" data-d="-1">‹</button>' +
+          '<span class="ui-dt-title"></span>' +
+          '<button type="button" class="ui-dt-nav" data-d="1">›</button>' +
+        '</div>' +
+        '<div class="ui-dt-dow"></div>' +
+        '<div class="ui-dt-grid"></div>' +
+        '<div class="ui-dt-time">' +
+          '<span class="ui-dt-time-lbl">Time</span>' +
+          '<div class="ui-stepper sm" data-min="0" data-max="23" data-value="9"></div>' +
+          '<span class="ui-dt-colon">:</span>' +
+          '<div class="ui-stepper sm" data-min="0" data-max="59" data-value="0"></div>' +
+          '<span class="ui-dt-tz"></span>' +
+        '</div>' +
+        '<div class="ui-dt-actions">' +
+          '<button type="button" class="btn ghost sm ui-dt-clear">Clear</button>' +
+          '<button type="button" class="btn primary sm ui-dt-done">Done</button>' +
+        '</div>' +
+      '</div>';
+    this.fieldEl = el.querySelector('.ui-dt-field');
+    this.textEl = el.querySelector('.ui-dt-text');
+    this.titleEl = el.querySelector('.ui-dt-title');
+    this.gridEl = el.querySelector('.ui-dt-grid');
+    el.querySelector('.ui-dt-dow').innerHTML = ['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa']
+      .map((d) => `<span>${d}</span>`).join('');
+    el.querySelector('.ui-dt-tz').textContent = tzLabel();
+    const steppers = el.querySelectorAll('.ui-stepper');
+    this.hour = new UIStepper(steppers[0], () => this._renderField());
+    this.minute = new UIStepper(steppers[1], () => this._renderField());
+
+    this.fieldEl.addEventListener('click', () => el.classList.toggle('open'));
+    el.querySelectorAll('.ui-dt-nav').forEach((b) =>
+      b.addEventListener('click', () => { this._shiftMonth(+b.dataset.d); })
+    );
+    el.querySelector('.ui-dt-clear').addEventListener('click', () => { this.date = null; this._renderGrid(); this._renderField(); });
+    el.querySelector('.ui-dt-done').addEventListener('click', () => el.classList.remove('open'));
+    document.addEventListener('click', (e) => { if (!el.contains(e.target)) el.classList.remove('open'); });
+    this._renderGrid();
+    this._renderField();
+  }
+  _shiftMonth(d) {
+    this.viewM += d;
+    if (this.viewM < 0) { this.viewM = 11; this.viewY--; }
+    else if (this.viewM > 11) { this.viewM = 0; this.viewY++; }
+    this._renderGrid();
+  }
+  _renderGrid() {
+    this.titleEl.textContent = new Date(this.viewY, this.viewM, 1)
+      .toLocaleString(undefined, { month: 'long', year: 'numeric' });
+    const startDow = new Date(this.viewY, this.viewM, 1).getDay();
+    const days = new Date(this.viewY, this.viewM + 1, 0).getDate();
+    const today = new Date(); today.setHours(0, 0, 0, 0);
+    let html = '';
+    for (let i = 0; i < startDow; i++) html += '<span class="ui-dt-cell empty"></span>';
+    for (let d = 1; d <= days; d++) {
+      const cell = new Date(this.viewY, this.viewM, d);
+      const past = cell < today;
+      const sel = this.date && this.date.getFullYear() === this.viewY && this.date.getMonth() === this.viewM && this.date.getDate() === d;
+      const isToday = cell.getTime() === today.getTime();
+      html += `<button type="button" class="ui-dt-cell${sel ? ' sel' : ''}${isToday ? ' today' : ''}" data-d="${d}"${past ? ' disabled' : ''}>${d}</button>`;
+    }
+    this.gridEl.innerHTML = html;
+    this.gridEl.querySelectorAll('.ui-dt-cell[data-d]:not([disabled])').forEach((c) =>
+      c.addEventListener('click', () => { this.date = new Date(this.viewY, this.viewM, +c.dataset.d); this._renderGrid(); this._renderField(); })
+    );
+  }
+  _renderField() {
+    const t = this.getTime();
+    this.textEl.textContent = t ? `${fmtDateTimeFull(t)} · ${tzLabel()}` : 'Pick a date & time';
+    this.textEl.classList.toggle('placeholder', !t);
+  }
+  getTime() {
+    if (!this.date) return null;
+    const d = new Date(this.date);
+    d.setHours(this.hour.value, this.minute.value, 0, 0);
+    return d.getTime();
+  }
+  setTime(ms) {
+    const d = new Date(ms);
+    this.date = new Date(d.getFullYear(), d.getMonth(), d.getDate());
+    this.hour.value = d.getHours();
+    this.minute.value = d.getMinutes();
+    this.viewY = d.getFullYear();
+    this.viewM = d.getMonth();
+    this._renderGrid();
+    this._renderField();
+  }
+}
+
 // ----- Trigger picker -----
 // Show only the inputs relevant to the chosen trigger; relabel the run button so
 // it reads as "schedule / hold / run" depending on the selection.
-const triggerType = $('#trigger-type');
+const triggerType = new UISelect($('#trigger-type'), {
+  options: [
+    { value: 'now', label: '▶ Run now' },
+    { value: 'hold', label: '✋ Hold — start manually later' },
+    { value: 'time', label: '⏰ At a specific time' },
+    { value: 'delay', label: '⏳ After a delay' },
+    { value: 'after', label: '🔗 After another session finishes' },
+  ],
+  value: 'now',
+  onChange: syncTriggerUI,
+});
+const afterSelect = new UISelect($('#trigger-after'));
+const delayH = new UIStepper($('#trigger-h'));
+const delayM = new UIStepper($('#trigger-m'));
+const timePicker = new UIDateTime($('#trigger-time'));
+$('#tz-note').textContent = `(times in ${tzLabel()})`;
+
 function syncTriggerUI() {
   const t = triggerType.value;
   $('#trigger-time-row').classList.toggle('hidden', t !== 'time');
@@ -349,19 +572,15 @@ function syncTriggerUI() {
     : t === 'after' ? '🔗 Queue after session'
     : '⏳ Schedule command set';
 }
-triggerType.addEventListener('change', syncTriggerUI);
 
 // Populate the "wait for this session" picker with the currently-active runs.
 function fillAfterOptions() {
-  const sel = $('#trigger-after');
-  const prev = sel.value;
+  const prev = afterSelect.value;
   const runs = [...state.runs.values()]
     .filter((r) => r.status === 'starting' || r.status === 'running')
     .sort((a, b) => b.createdAt - a.createdAt);
-  sel.innerHTML = runs.length
-    ? runs.map((r) => `<option value="${esc(r.id)}">${esc(r.name)}</option>`).join('')
-    : '<option value="">— no running sessions —</option>';
-  if (runs.some((r) => r.id === prev)) sel.value = prev;
+  const opts = runs.map((r) => ({ value: r.id, label: r.name }));
+  afterSelect.setOptions(opts, runs.some((r) => r.id === prev) ? prev : (opts[0] ? opts[0].value : null));
 }
 
 // Build the trigger payload from the form, or null if the selection is invalid.
@@ -370,22 +589,20 @@ function buildTrigger() {
   if (t === 'now') return { type: 'now' };
   if (t === 'hold') return { type: 'hold' };
   if (t === 'time') {
-    const v = $('#trigger-time').value;
-    if (!v) { flagHint('Pick a start time.'); return null; }
-    const runAt = new Date(v).getTime();
-    if (!Number.isFinite(runAt)) { flagHint('That start time is invalid.'); return null; }
+    const runAt = timePicker.getTime();
+    if (!runAt) { flagHint('Pick a start date & time.'); return null; }
     if (runAt <= Date.now()) { flagHint('Pick a start time in the future.'); return null; }
     return { type: 'time', runAt };
   }
   if (t === 'delay') {
-    const h = Math.max(0, parseInt($('#trigger-h').value || '0', 10));
-    const m = Math.max(0, parseInt($('#trigger-m').value || '0', 10));
+    const h = Math.max(0, delayH.value);
+    const m = Math.max(0, delayM.value);
     const delayMs = (h * 60 + m) * 60 * 1000;
     if (delayMs <= 0) { flagHint('Set a delay of at least one minute.'); return null; }
     return { type: 'delay', delayMs };
   }
   if (t === 'after') {
-    const dependsOn = $('#trigger-after').value;
+    const dependsOn = afterSelect.value;
     if (!dependsOn) { flagHint('Pick a running session to wait for.'); return null; }
     return { type: 'after', dependsOn };
   }
@@ -539,10 +756,7 @@ function editPending(p) {
   triggerType.value = t.type === 'after' ? 'after' : t.type === 'time' || t.type === 'delay' ? 'time' : t.type === 'hold' ? 'hold' : 'now';
   syncTriggerUI();
   if (t.type === 'time' || t.type === 'delay') {
-    const d = new Date(t.runAt || Date.now());
-    // datetime-local wants local time without timezone suffix.
-    const pad = (n) => String(n).padStart(2, '0');
-    $('#trigger-time').value = `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+    timePicker.setTime(t.runAt || Date.now());
   }
   rebuildGutter();
   switchView('compose');

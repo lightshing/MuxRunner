@@ -99,9 +99,110 @@ button, input, textarea { font-family: inherit; }
 
 /* ---------- Trigger picker ---------- */
 /* Each option block holds the inputs for one trigger type; hidden until chosen. */
-.trigger-opt { display: flex; gap: 16px; flex-wrap: wrap; margin-bottom: 4px; }
-.trigger-opt .field { flex: 1 1 220px; }
-.field.inline-num { flex: 0 0 120px; }
+.trigger-opt { display: flex; gap: 16px; flex-wrap: wrap; margin-bottom: 4px; align-items: flex-end; }
+.trigger-opt .field { flex: 1 1 220px; margin-bottom: 12px; }
+.field.inline-num { flex: 0 0 150px; }
+.tz-note { color: var(--faint); font-size: 12px; }
+
+/* ---------- Custom dropdown (replaces native <select>) ---------- */
+.ui-select {
+  position: relative; width: 100%; cursor: pointer; user-select: none;
+  background: var(--bg-2); border: 1px solid var(--border-2); border-radius: 10px;
+  padding: 12px 38px 12px 14px; font-size: 14px; color: var(--text);
+  outline: none; transition: border 0.15s, box-shadow 0.15s;
+  display: flex; align-items: center; min-height: 46px;
+}
+.ui-select:focus, .ui-select.open {
+  border-color: var(--accent); box-shadow: 0 0 0 3px rgba(79, 107, 255, 0.15);
+}
+.ui-select-label { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ui-select-label.placeholder { color: var(--faint); }
+.ui-select-caret {
+  position: absolute; right: 14px; color: var(--muted); font-size: 11px;
+  pointer-events: none; transition: transform 0.15s;
+}
+.ui-select.open .ui-select-caret { transform: rotate(180deg); }
+.ui-select-menu {
+  position: absolute; top: calc(100% + 6px); left: 0; right: 0; z-index: 40;
+  background: var(--panel); border: 1px solid var(--border-2); border-radius: 12px;
+  box-shadow: var(--shadow); padding: 6px; max-height: 280px; overflow: auto;
+  display: none;
+}
+.ui-select.open .ui-select-menu { display: block; }
+.ui-select-opt {
+  padding: 10px 12px; border-radius: 8px; font-size: 14px; color: var(--text);
+  cursor: pointer; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.ui-select-opt:hover { background: var(--panel-2); }
+.ui-select-opt.sel { background: rgba(79, 107, 255, 0.12); color: var(--accent); font-weight: 600; }
+.ui-select-opt.disabled { color: var(--faint); cursor: default; }
+.ui-select-opt.disabled:hover { background: transparent; }
+
+/* ---------- Custom number stepper (replaces <input type=number>) ---------- */
+.ui-stepper {
+  display: flex; align-items: stretch; background: var(--bg-2);
+  border: 1px solid var(--border-2); border-radius: 10px; overflow: hidden;
+  transition: border 0.15s, box-shadow 0.15s;
+}
+.ui-stepper:focus-within { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(79, 107, 255, 0.15); }
+.ui-step-btn {
+  border: 0; background: var(--panel-2); color: var(--muted); cursor: pointer;
+  width: 40px; font-size: 18px; line-height: 1; transition: background 0.12s, color 0.12s;
+}
+.ui-step-btn:hover { background: var(--border); color: var(--text); }
+.ui-step-btn:active { background: var(--border-2); }
+.ui-step-input {
+  flex: 1; min-width: 0; border: 0; outline: none; background: transparent;
+  text-align: center; font-size: 15px; color: var(--text); padding: 11px 6px;
+  font-variant-numeric: tabular-nums;
+}
+.ui-stepper.sm { width: 96px; }
+.ui-stepper.sm .ui-step-btn { width: 30px; font-size: 16px; }
+.ui-stepper.sm .ui-step-input { padding: 8px 2px; font-size: 14px; }
+
+/* ---------- Custom date + time picker (replaces datetime-local) ---------- */
+.ui-datetime { position: relative; width: 100%; }
+.ui-dt-field {
+  width: 100%; cursor: pointer; user-select: none; background: var(--bg-2);
+  border: 1px solid var(--border-2); border-radius: 10px; padding: 12px 14px;
+  font-size: 14px; color: var(--text); outline: none; min-height: 46px;
+  display: flex; align-items: center; gap: 10px; transition: border 0.15s, box-shadow 0.15s;
+}
+.ui-dt-field:focus, .ui-datetime.open .ui-dt-field {
+  border-color: var(--accent); box-shadow: 0 0 0 3px rgba(79, 107, 255, 0.15);
+}
+.ui-dt-text { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ui-dt-text.placeholder { color: var(--faint); }
+.ui-dt-field .ui-select-caret { position: static; }
+.ui-dt-pop {
+  position: absolute; top: calc(100% + 6px); left: 0; z-index: 40; width: 300px; max-width: 92vw;
+  background: var(--panel); border: 1px solid var(--border-2); border-radius: 14px;
+  box-shadow: var(--shadow); padding: 14px; display: none;
+}
+.ui-datetime.open .ui-dt-pop { display: block; }
+.ui-dt-cal-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; }
+.ui-dt-title { font-weight: 600; font-size: 14px; }
+.ui-dt-nav {
+  border: 1px solid var(--border-2); background: var(--bg-2); color: var(--muted);
+  width: 30px; height: 30px; border-radius: 8px; cursor: pointer; font-size: 16px; line-height: 1;
+}
+.ui-dt-nav:hover { background: var(--panel-2); color: var(--text); }
+.ui-dt-dow, .ui-dt-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 2px; }
+.ui-dt-dow span { text-align: center; font-size: 11px; color: var(--faint); padding: 4px 0; }
+.ui-dt-cell {
+  border: 0; background: transparent; color: var(--text); cursor: pointer;
+  aspect-ratio: 1; border-radius: 8px; font-size: 13px; padding: 0;
+}
+.ui-dt-cell:hover:not(.empty):not([disabled]) { background: var(--panel-2); }
+.ui-dt-cell.empty { cursor: default; }
+.ui-dt-cell.today { box-shadow: inset 0 0 0 1px var(--border-2); }
+.ui-dt-cell.sel { background: linear-gradient(135deg, var(--accent), var(--accent-2)); color: #fff; font-weight: 600; }
+.ui-dt-cell[disabled] { color: var(--faint); opacity: 0.4; cursor: default; }
+.ui-dt-time { display: flex; align-items: center; gap: 6px; margin-top: 14px; }
+.ui-dt-time-lbl { font-size: 12px; color: var(--muted); margin-right: 4px; }
+.ui-dt-colon { font-weight: 700; color: var(--muted); }
+.ui-dt-tz { margin-left: auto; font-size: 11px; color: var(--faint); }
+.ui-dt-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 14px; }
 
 /* The directory a fresh tmux session starts in. */
 .pwd-line {
