@@ -34,9 +34,16 @@ for errors later.
     error), **without waiting for its session to be closed**.
 
   Deferred sets are **retained on the Sessions page** under *Scheduled &
-  pending*, each with a live countdown and **Start now / Edit / Cancel**
-  buttons — any trigger can always be started by hand. Pending tasks are
-  persisted to `./logs/.pending/`, so they survive a server restart.
+  pending*, each with a live countdown and **Start now / 👁 Preview / ⏲ Trigger
+  / Edit / Cancel** buttons — any trigger can always be started by hand.
+  - **👁 Preview** opens a read-only popup listing the set's commands one per
+    line, so you can check what a task will run without opening Compose.
+  - **⏲ Trigger** edits *just the when-to-run condition* inline on the card
+    (swap hold ↔ time ↔ delay ↔ chain) without touching the commands or jumping
+    to Compose. A re-scheduled delay counts from the moment you save it.
+
+  Pending tasks are persisted to `./logs/.pending/`, so they survive a server
+  restart.
 - ▶️ **Strict sequential execution** — line _N+1_ starts only after line _N_
   finishes.
 - ⏸️ **Auto-pause on error** — the first non-zero exit halts the rest and marks
@@ -195,7 +202,9 @@ npm start
    **specific time** or **after a delay**, or chain it to start **after another
    running session finishes**. Anything other than *Run now* is parked under
    *Scheduled & pending* on the Sessions tab with a countdown and **Start now /
-   Edit / Cancel** controls (and is also startable from the Telegram bot).
+   👁 Preview / ⏲ Trigger / Edit / Cancel** controls (and is also startable from
+   the Telegram bot). **👁 Preview** shows the commands read-only in a popup;
+   **⏲ Trigger** re-schedules a queued task inline — no jump to Compose.
 
 3. **Run** — hit *Run command set*. A new tmux session starts and the *Sessions*
    tab opens with a live card that ticks the elapsed run time second by second.
@@ -397,6 +406,7 @@ MuxRunner/
 | `POST` | `/api/runs/:id/close`        | Kill the tmux session                     |
 | `GET`  | `/api/pending`               | List deferred / scheduled / held tasks    |
 | `POST` | `/api/pending/:id/start`     | Launch a pending task now                  |
+| `POST` | `/api/pending/:id/trigger`   | Re-arm a pending task's trigger in place (body `{trigger}`) |
 | `POST` | `/api/pending/:id/cancel`    | Remove a pending task without running it   |
 
 `POST /api/runs` accepts an optional `trigger` in the JSON body. Without one (or

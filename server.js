@@ -73,6 +73,16 @@ async function main() {
     }
   });
 
+  // Edit just the trigger of a queued task in place (name + commands untouched).
+  app.post('/api/pending/:id/trigger', async (req, res) => {
+    try {
+      const task = await manager.updatePendingTrigger(req.params.id, (req.body || {}).trigger);
+      res.json(task.summary());
+    } catch (err) {
+      res.status(400).json({ error: err.message });
+    }
+  });
+
   app.post('/api/pending/:id/cancel', async (req, res) => {
     const ok = await manager.cancelPending(req.params.id);
     if (!ok) return res.status(404).json({ error: 'not found' });

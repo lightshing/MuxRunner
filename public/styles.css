@@ -297,8 +297,30 @@ button, input, textarea { font-family: inherit; }
   cursor: default; background: var(--panel);
 }
 .session-card.pending-card:hover { transform: none; border-color: var(--faint); }
-.session-card.pending-card .card-actions { margin-top: 14px; }
+.session-card.pending-card .card-actions { margin-top: 14px; flex-wrap: wrap; }
+.session-card.pending-card.editing { border-style: solid; border-color: var(--accent); }
 [data-countdown-to] { font-variant-numeric: tabular-nums; color: var(--amber); font-weight: 600; }
+
+/* Inline trigger editor (shown in place of a pending card's body). */
+.trigger-edit { margin: 14px 0 4px; display: flex; flex-direction: column; gap: 10px; }
+.trigger-edit .te-row { display: flex; gap: 12px; flex-wrap: wrap; align-items: flex-end; }
+.trigger-edit .te-num { display: flex; flex-direction: column; gap: 6px; }
+.trigger-edit .te-num-lbl { font-size: 12px; color: var(--muted); }
+.trigger-edit .ui-datetime { flex: 1; }
+
+/* Read-only command preview modal. */
+.preview-modal { width: 96vw; max-width: 96vw; display: flex; flex-direction: column; max-height: 80vh; }
+.preview-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; margin-bottom: 14px; }
+.preview-sub { font-size: 12px; color: var(--faint); margin-top: 4px; }
+.preview-list {
+  overflow: auto; border: 1px solid var(--border); border-radius: 10px;
+  background: var(--bg-2); padding: 6px 0; font-family: var(--mono); font-size: 13px;
+}
+.preview-line { display: flex; gap: 12px; padding: 3px 14px; align-items: baseline; }
+.preview-line:hover { background: var(--panel-2); }
+.preview-ln { color: var(--faint); text-align: right; min-width: 26px; user-select: none; font-variant-numeric: tabular-nums; }
+.preview-line code { color: var(--text); white-space: pre-wrap; word-break: break-all; }
+.preview-empty { padding: 16px; color: var(--faint); text-align: center; }
 
 /* ---------- Sessions grid ---------- */
 .sessions-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 16px; }

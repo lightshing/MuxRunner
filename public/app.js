@@ -11,6 +11,7 @@ const state = {
   drawerOpenSteps: new Set(), // expanded step idxs in the open drawer
   openDrawer: null, // id currently shown in drawer
   liveTimer: null, // capture-pane poll interval for the open live drawer
+  triggerEdit: null, // { id, draft } while editing a pending task's trigger inline
   view: 'compose',
 };
 
@@ -694,40 +695,205 @@ function renderPending() {
     return da - db;
   });
   section.classList.toggle('hidden', list.length === 0);
+  // If the task being trigger-edited has fired or been cancelled, drop the
+  // in-flight edit so we don't try to render a form for a card that's gone.
+  if (state.triggerEdit && !state.pending.has(state.triggerEdit.id)) state.triggerEdit = null;
+  // Preserve the open editor's live node across re-renders (run:update rebuilds
+  // this grid) so an unsaved time pick / open popup isn't blown away.
+  const liveEdit = state.triggerEdit ? grid.querySelector('.pending-card.editing') : null;
   grid.innerHTML = '';
   for (const p of list) {
-    const t = p.trigger || {};
+    if (state.triggerEdit && state.triggerEdit.id === p.id) {
+      if (liveEdit) { grid.appendChild(liveEdit); continue; }
+      const card = document.createElement('div');
+      card.className = 'session-card pending-card';
+      buildTriggerEditCard(card, p);
+      grid.appendChild(card);
+      continue;
+    }
     const card = document.createElement('div');
     card.className = 'session-card pending-card';
-    const when =
-      (t.type === 'time' || t.type === 'delay') && t.runAt
-        ? `⏱ fires in <span data-countdown-to="${t.runAt}"></span>`
-        : t.type === 'after'
-          ? `🔗 ${esc(triggerLabel(t))}`
-          : '✋ manual start';
-    card.innerHTML = `
-      <div class="row">
-        <div>
-          <h3 title="${esc(p.name)}">${esc(p.name)}</h3>
-          <div class="session-meta">${esc(triggerLabel(t))}</div>
-        </div>
-        <span class="status pending">pending</span>
-      </div>
-      <div class="session-meta">${p.commands.length} step${p.commands.length === 1 ? '' : 's'} · ${when}</div>
-      <div class="card-actions">
-        <button class="btn primary sm" data-act="start">▶ Start now</button>
-        <button class="btn ghost sm" data-act="edit">✎ Edit</button>
-        <button class="btn danger sm" data-act="cancel">✕ Cancel</button>
-      </div>`;
-    card.addEventListener('click', (e) => {
-      const act = e.target.dataset.act;
-      if (act === 'start') { e.stopPropagation(); startPending(p.id); }
-      else if (act === 'cancel') { e.stopPropagation(); cancelPending(p.id); }
-      else if (act === 'edit') { e.stopPropagation(); editPending(p); }
-    });
+    buildPendingCard(card, p);
     grid.appendChild(card);
   }
   tickElapsed();
+}
+
+// A queued task at rest: name, trigger summary, and its action buttons.
+function buildPendingCard(card, p) {
+  const t = p.trigger || {};
+  const when =
+    (t.type === 'time' || t.type === 'delay') && t.runAt
+      ? `⏱ fires in <span data-countdown-to="${t.runAt}"></span>`
+      : t.type === 'after'
+        ? `🔗 ${esc(triggerLabel(t))}`
+        : '✋ manual start';
+  card.innerHTML = `
+    <div class="row">
+      <div>
+        <h3 title="${esc(p.name)}">${esc(p.name)}</h3>
+        <div class="session-meta">${esc(triggerLabel(t))}</div>
+      </div>
+      <span class="status pending">pending</span>
+    </div>
+    <div class="session-meta">${p.commands.length} step${p.commands.length === 1 ? '' : 's'} · ${when}</div>
+    <div class="card-actions">
+      <button class="btn primary sm" data-act="start">▶ Start now</button>
+      <button class="btn ghost sm" data-act="preview">👁 Preview</button>
+      <button class="btn ghost sm" data-act="trigger">⏲ Trigger</button>
+      <button class="btn ghost sm" data-act="edit">✎ Edit</button>
+      <button class="btn danger sm" data-act="cancel">✕ Cancel</button>
+    </div>`;
+  card.addEventListener('click', (e) => {
+    const act = e.target.dataset.act;
+    if (!act) return;
+    e.stopPropagation();
+    if (act === 'start') startPending(p.id);
+    else if (act === 'cancel') cancelPending(p.id);
+    else if (act === 'edit') editPending(p);
+    else if (act === 'preview') previewPending(p);
+    else if (act === 'trigger') openTriggerEdit(p);
+  });
+}
+
+// ----- Read-only command preview -----
+// Show the queued task's commands, one per line, without entering Compose.
+function previewPending(p) {
+  $('#preview-title').textContent = p.name;
+  $('#preview-sub').textContent =
+    `${p.commands.length} command${p.commands.length === 1 ? '' : 's'} · ${triggerLabel(p.trigger || {})} · read-only`;
+  $('#preview-list').innerHTML = p.commands.length
+    ? p.commands
+        .map((c, i) => `<div class="preview-line"><span class="preview-ln">${i + 1}</span><code>${esc(c)}</code></div>`)
+        .join('')
+    : '<div class="preview-empty">No commands.</div>';
+  $('#preview-scrim').classList.remove('hidden');
+}
+function closePreview() {
+  $('#preview-scrim').classList.add('hidden');
+}
+
+// ----- Inline trigger editing -----
+// Swap the card into a small trigger editor (same controls as Compose) so the
+// when-to-run condition can be changed in place — no jump to Compose.
+function openTriggerEdit(p) {
+  const t = p.trigger || {};
+  const draft = {
+    type: t.type === 'time' || t.type === 'delay' ? t.type : t.type === 'after' ? 'after' : 'hold',
+    runAt: t.runAt || null,
+    delayH: 0,
+    delayM: 30,
+    dependsOn: t.dependsOn || null,
+  };
+  if (t.type === 'delay' && t.delayMs != null) {
+    const mins = Math.max(0, Math.round(t.delayMs / 60000));
+    draft.delayH = Math.floor(mins / 60);
+    draft.delayM = mins % 60;
+  }
+  state.triggerEdit = { id: p.id, draft };
+  renderPending();
+}
+
+function buildTriggerEditCard(card, p) {
+  const d = state.triggerEdit.draft;
+  card.classList.add('editing');
+  card.innerHTML = `
+    <div class="row">
+      <div>
+        <h3 title="${esc(p.name)}">${esc(p.name)}</h3>
+        <div class="session-meta">Editing trigger · ${p.commands.length} step${p.commands.length === 1 ? '' : 's'}</div>
+      </div>
+      <span class="status pending">pending</span>
+    </div>
+    <div class="trigger-edit">
+      <div class="ui-select te-type"></div>
+      <div class="te-row te-time hidden"><div class="ui-datetime te-time-pick"></div></div>
+      <div class="te-row te-delay hidden">
+        <span class="te-num"><span class="te-num-lbl">Hours</span><div class="ui-stepper sm te-h" data-min="0" data-value="${d.delayH}"></div></span>
+        <span class="te-num"><span class="te-num-lbl">Minutes</span><div class="ui-stepper sm te-m" data-min="0" data-max="59" data-value="${d.delayM}"></div></span>
+      </div>
+      <div class="te-row te-after hidden"><div class="ui-select te-after-sel" data-empty="— no running sessions —"></div></div>
+    </div>
+    <div class="card-actions">
+      <button class="btn primary sm" data-act="save">✓ Save trigger</button>
+      <button class="btn ghost sm" data-act="canceledit">Cancel</button>
+    </div>`;
+
+  const syncRows = () => {
+    card.querySelector('.te-time').classList.toggle('hidden', d.type !== 'time');
+    card.querySelector('.te-delay').classList.toggle('hidden', d.type !== 'delay');
+    card.querySelector('.te-after').classList.toggle('hidden', d.type !== 'after');
+  };
+
+  new UISelect(card.querySelector('.te-type'), {
+    options: [
+      { value: 'hold', label: '✋ Hold — start manually later' },
+      { value: 'time', label: '⏰ At a specific time' },
+      { value: 'delay', label: '⏳ After a delay' },
+      { value: 'after', label: '🔗 After another session finishes' },
+    ],
+    value: d.type,
+    onChange: (v) => { d.type = v; syncRows(); },
+  });
+
+  const timePick = new UIDateTime(card.querySelector('.te-time-pick'));
+  if (d.runAt) timePick.setTime(d.runAt);
+
+  const hStep = new UIStepper(card.querySelector('.te-h'), () => { d.delayH = hStep.value; });
+  const mStep = new UIStepper(card.querySelector('.te-m'), () => { d.delayM = mStep.value; });
+
+  const afterSel = new UISelect(card.querySelector('.te-after-sel'));
+  const runs = [...state.runs.values()]
+    .filter((r) => r.status === 'starting' || r.status === 'running')
+    .sort((a, b) => b.createdAt - a.createdAt);
+  const opts = runs.map((r) => ({ value: r.id, label: r.name }));
+  afterSel.setOptions(opts, runs.some((r) => r.id === d.dependsOn) ? d.dependsOn : (opts[0] ? opts[0].value : null));
+  d.dependsOn = afterSel.value || null;
+  afterSel.onChange = (v) => { d.dependsOn = v; };
+
+  syncRows();
+
+  card.addEventListener('click', (e) => {
+    const act = e.target.dataset.act;
+    if (!act) return;
+    e.stopPropagation();
+    if (act === 'canceledit') { state.triggerEdit = null; renderPending(); }
+    else if (act === 'save') saveTriggerEdit(p.id, d, timePick, afterSel);
+  });
+}
+
+async function saveTriggerEdit(id, d, timePick, afterSel) {
+  let trigger;
+  if (d.type === 'hold') {
+    trigger = { type: 'hold' };
+  } else if (d.type === 'time') {
+    const runAt = timePick.getTime();
+    if (!runAt) return toast('Pick a start date & time.');
+    if (runAt <= Date.now()) return toast('Pick a start time in the future.');
+    trigger = { type: 'time', runAt };
+  } else if (d.type === 'delay') {
+    const delayMs = ((d.delayH || 0) * 60 + (d.delayM || 0)) * 60 * 1000;
+    if (delayMs <= 0) return toast('Set a delay of at least one minute.');
+    trigger = { type: 'delay', delayMs };
+  } else if (d.type === 'after') {
+    const dependsOn = afterSel.value;
+    if (!dependsOn) return toast('Pick a running session to wait for.');
+    trigger = { type: 'after', dependsOn };
+  }
+  try {
+    const res = await fetch('/api/pending/' + id + '/trigger', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ trigger }),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'failed');
+    state.triggerEdit = null;
+    toast(`Updated trigger — ${triggerLabel(data.trigger)}`);
+    renderPending();
+  } catch (e) {
+    toast('Failed to update trigger: ' + e.message);
+  }
 }
 
 async function startPending(id) {
@@ -1192,6 +1358,13 @@ async function loadInitial() {
     renderAll();
   } catch {}
 }
+
+// Preview modal: close on the ✕, on scrim click, or Esc.
+$('#preview-close').addEventListener('click', closePreview);
+$('#preview-scrim').addEventListener('mousedown', (e) => { if (e.target === $('#preview-scrim')) closePreview(); });
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape' && !$('#preview-scrim').classList.contains('hidden')) closePreview();
+});
 
 loadInitial();
 loadConfig();

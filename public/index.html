@@ -180,6 +180,20 @@
         </div>
       </div>
 
+      <!-- PREVIEW MODAL (read-only command list) ----------------------->
+      <div class="modal-scrim hidden" id="preview-scrim">
+        <div class="modal preview-modal" role="dialog" aria-modal="true" aria-labelledby="preview-title">
+          <div class="preview-head">
+            <div>
+              <div class="modal-title" id="preview-title"></div>
+              <div class="preview-sub" id="preview-sub"></div>
+            </div>
+            <button class="icon-btn" id="preview-close" title="Close">✕</button>
+          </div>
+          <div class="preview-list" id="preview-list"></div>
+        </div>
+      </div>
+
       <div class="toast" id="toast"></div>
     </div>
     <script src="app.js"></script>
