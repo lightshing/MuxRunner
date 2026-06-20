@@ -175,7 +175,9 @@ button, input, textarea { font-family: inherit; }
 .ui-dt-text.placeholder { color: var(--faint); }
 .ui-dt-field .ui-select-caret { position: static; }
 .ui-dt-pop {
-  position: absolute; top: calc(100% + 6px); left: 0; z-index: 40; width: 300px; max-width: 92vw;
+  /* Pops upward (above the field) so it doesn't get clipped near the bottom of
+     the compose card. */
+  position: absolute; bottom: calc(100% + 6px); left: 0; z-index: 40; width: 300px; max-width: 92vw;
   background: var(--panel); border: 1px solid var(--border-2); border-radius: 14px;
   box-shadow: var(--shadow); padding: 14px; display: none;
 }

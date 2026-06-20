@@ -480,7 +480,17 @@ class UIDateTime {
     this.hour = new UIStepper(steppers[0], () => this._renderField());
     this.minute = new UIStepper(steppers[1], () => this._renderField());
 
-    this.fieldEl.addEventListener('click', () => el.classList.toggle('open'));
+    this.fieldEl.addEventListener('click', () => {
+      // When opening with nothing chosen yet, land on the current month so the
+      // picker always shows today first.
+      if (!el.classList.contains('open') && !this.date) {
+        const now = new Date();
+        this.viewY = now.getFullYear();
+        this.viewM = now.getMonth();
+        this._renderGrid();
+      }
+      el.classList.toggle('open');
+    });
     el.querySelectorAll('.ui-dt-nav').forEach((b) =>
       b.addEventListener('click', () => { this._shiftMonth(+b.dataset.d); })
     );
