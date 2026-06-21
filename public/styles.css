@@ -286,10 +286,14 @@ button, input, textarea { font-family: inherit; }
 .status.closed { color: var(--faint); background: rgba(120,130,150,0.1); }
 .status.pending { color: var(--amber); background: rgba(245,185,69,0.12); }
 .status.pending::before { animation: pulse 1.8s infinite; }
+/* Scheduled = manual start: a calm accent badge, no pulse (it won't fire on its own). */
+.status.scheduled { color: var(--accent); background: rgba(109,139,255,0.12); }
 @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.35; } }
 
 /* ---------- Pending / scheduled section ---------- */
 .pending-section { margin-bottom: 26px; }
+.pending-group { margin-bottom: 22px; }
+.pending-group:last-child { margin-bottom: 0; }
 .section-title { font-size: 14px; font-weight: 600; color: var(--muted); margin: 0 0 12px; }
 /* A dashed, amber-tinted edge marks cards as "not running yet". */
 .session-card.pending-card {

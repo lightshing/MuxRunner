@@ -33,9 +33,16 @@ for errors later.
     fires the moment that set finishes executing (completed *or* paused on
     error), **without waiting for its session to be closed**.
 
-  Deferred sets are **retained on the Sessions page** under *Scheduled &
-  pending*, each with a live countdown and **Start now / 👁 Preview / ⏲ Trigger
-  / Edit / Cancel** buttons — any trigger can always be started by hand.
+  Deferred sets are **retained on the Sessions page**, split into two groups so
+  the two kinds never blur together:
+  - **✋ Scheduled · start manually** — held sets with no auto-trigger. Their
+    card carries a calm accent **Scheduled** badge (top-right).
+  - **⏳ Pending · auto-trigger** — sets that will fire on their own (time /
+    delay / after another session). Their card carries a pulsing amber
+    **Pending** badge and a live countdown.
+
+  Every card has **Start now / 👁 Preview / ⏲ Trigger / Edit / Cancel** buttons —
+  any trigger can always be started by hand.
   - **👁 Preview** opens a read-only popup listing the set's commands one per
     line, so you can check what a task will run without opening Compose.
   - **⏲ Trigger** edits *just the when-to-run condition* inline on the card
@@ -200,8 +207,9 @@ npm start
 2. **Choose when to run** — the *When to run (trigger)* picker defaults to **Run
    now**, but you can also **Hold** the set for a manual start, schedule it for a
    **specific time** or **after a delay**, or chain it to start **after another
-   running session finishes**. Anything other than *Run now* is parked under
-   *Scheduled & pending* on the Sessions tab with a countdown and **Start now /
+   running session finishes**. Anything other than *Run now* is parked on the
+   Sessions tab — held sets under **✋ Scheduled**, auto-triggered ones under
+   **⏳ Pending** (with a countdown) — each with **Start now /
    👁 Preview / ⏲ Trigger / Edit / Cancel** controls (and is also startable from
    the Telegram bot). **👁 Preview** shows the commands read-only in a popup;
    **⏲ Trigger** re-schedules a queued task inline — no jump to Compose.
@@ -293,7 +301,7 @@ keyboard docked under the chat) and the **☰ command menu** next to the input b
 | ---------------------- | ---------------------------------------------------------- |
 | **📡 活动会话** / `/sessions` (`/status`, `/s`) | every active session: status, `done/total` progress, and its `tmux attach …` |
 | **📆 待执行** / `/pending` | every deferred / scheduled / held task, each with a one-tap **▶️ start** and **✕ cancel** button |
-| **🗂️ 历史记录** / `/all`  | finished runs grouped by outcome — ✅ completed, ⏸️ paused, ⏹️ closed |
+| **🗂️ 历史记录** / `/all`  | full history split into two kinds — ✅ **completed** and ⏹️ **closed** — newest first, each with progress, duration and finish time (paused runs stay live under 📡 活动会话) |
 | **❓ 帮助** / `/help`     | the command list                                           |
 
 The **待执行 (pending)** view is how you launch a retained task from your phone:

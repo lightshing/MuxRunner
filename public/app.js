@@ -686,18 +686,42 @@ function triggerLabel(t) {
   return '';
 }
 
+// A queued task is "Scheduled" when it starts manually (a held task with no
+// auto-trigger). One that carries a time / delay / after condition fires on its
+// own, so it's genuinely "Pending". This split drives both the section it lands
+// in and its top-right badge.
+function isScheduled(p) {
+  return (p.trigger?.type || 'hold') === 'hold';
+}
+
+// Top-right card badge that names the kind of queued task.
+function pendingBadge(p) {
+  return isScheduled(p)
+    ? '<span class="status scheduled">Scheduled</span>'
+    : '<span class="status pending">Pending</span>';
+}
+
 function renderPending() {
   const section = $('#pending-section');
-  const grid = $('#pending-grid');
-  const list = [...state.pending.values()].sort((a, b) => {
+  const all = [...state.pending.values()].sort((a, b) => {
     const da = a.trigger?.runAt || a.createdAt;
     const db = b.trigger?.runAt || b.createdAt;
     return da - db;
   });
-  section.classList.toggle('hidden', list.length === 0);
+  section.classList.toggle('hidden', all.length === 0);
   // If the task being trigger-edited has fired or been cancelled, drop the
   // in-flight edit so we don't try to render a form for a card that's gone.
   if (state.triggerEdit && !state.pending.has(state.triggerEdit.id)) state.triggerEdit = null;
+  // Manually-started (Scheduled) tasks go in their own group; auto-triggered
+  // (Pending) ones in theirs.
+  renderPendingGroup('scheduled-group', 'scheduled-grid', all.filter(isScheduled));
+  renderPendingGroup('pending-group', 'pending-grid', all.filter((p) => !isScheduled(p)));
+  tickElapsed();
+}
+
+function renderPendingGroup(groupId, gridId, list) {
+  $('#' + groupId).classList.toggle('hidden', list.length === 0);
+  const grid = $('#' + gridId);
   // Preserve the open editor's live node across re-renders (run:update rebuilds
   // this grid) so an unsaved time pick / open popup isn't blown away.
   const liveEdit = state.triggerEdit ? grid.querySelector('.pending-card.editing') : null;
@@ -716,7 +740,6 @@ function renderPending() {
     buildPendingCard(card, p);
     grid.appendChild(card);
   }
-  tickElapsed();
 }
 
 // A queued task at rest: name, trigger summary, and its action buttons.
@@ -734,7 +757,7 @@ function buildPendingCard(card, p) {
         <h3 title="${esc(p.name)}">${esc(p.name)}</h3>
         <div class="session-meta">${esc(triggerLabel(t))}</div>
       </div>
-      <span class="status pending">pending</span>
+      ${pendingBadge(p)}
     </div>
     <div class="session-meta">${p.commands.length} step${p.commands.length === 1 ? '' : 's'} · ${when}</div>
     <div class="card-actions">
@@ -803,7 +826,7 @@ function buildTriggerEditCard(card, p) {
         <h3 title="${esc(p.name)}">${esc(p.name)}</h3>
         <div class="session-meta">Editing trigger · ${p.commands.length} step${p.commands.length === 1 ? '' : 's'}</div>
       </div>
-      <span class="status pending">pending</span>
+      ${pendingBadge(p)}
     </div>
     <div class="trigger-edit">
       <div class="ui-select te-type"></div>

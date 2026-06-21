@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>MuxRunner</title>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
-    <link rel="stylesheet" href="styles.css?v=3" />
+    <link rel="stylesheet" href="styles.css?v=4" />
     <link
       rel="icon"
       href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>⚡</text></svg>"
@@ -114,8 +114,14 @@
             <p>Running &amp; retained tmux sessions. Click a card to watch output.</p>
           </header>
           <div class="pending-section hidden" id="pending-section">
-            <h2 class="section-title">⏳ Scheduled &amp; pending</h2>
-            <div class="sessions-grid" id="pending-grid"></div>
+            <div class="pending-group hidden" id="scheduled-group">
+              <h2 class="section-title">✋ Scheduled · start manually</h2>
+              <div class="sessions-grid" id="scheduled-grid"></div>
+            </div>
+            <div class="pending-group hidden" id="pending-group">
+              <h2 class="section-title">⏳ Pending · auto-trigger</h2>
+              <div class="sessions-grid" id="pending-grid"></div>
+            </div>
           </div>
           <div class="sessions-grid" id="sessions-grid"></div>
           <div class="empty" id="sessions-empty">No active sessions yet.</div>
@@ -196,6 +202,6 @@
 
       <div class="toast" id="toast"></div>
     </div>
-    <script src="app.js?v=2"></script>
+    <script src="app.js?v=3"></script>
   </body>
 </html>
