@@ -108,6 +108,7 @@ WorkingDirectory=/home/ubuntu/MuxRunner
 ExecStart=/usr/bin/node /home/ubuntu/MuxRunner/server.js
 Restart=on-failure
 RestartSec=3
+KillMode=process
 StandardOutput=append:/home/ubuntu/MuxRunner/logs/service.log
 StandardError=append:/home/ubuntu/MuxRunner/logs/service.log
 
@@ -125,6 +126,9 @@ systemctl status muxrunner.service
 
 请根据你的主机调整 `User`、`WorkingDirectory` 以及 `node` 的路径。服务输出会写入
 `logs/service.log`（也可通过 `journalctl -u muxrunner` 查看）。
+
+请保留 `KillMode=process`：MuxRunner 会有意创建长期存活的 tmux 会话；该设置确保
+部署时只重启 Web 主进程，不会终止保留的会话及其中正在执行的命令。
 
 ### 重启服务
 

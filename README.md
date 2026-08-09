@@ -154,6 +154,7 @@ WorkingDirectory=/home/ubuntu/MuxRunner
 ExecStart=/usr/bin/node /home/ubuntu/MuxRunner/server.js
 Restart=on-failure
 RestartSec=3
+KillMode=process
 StandardOutput=append:/home/ubuntu/MuxRunner/logs/service.log
 StandardError=append:/home/ubuntu/MuxRunner/logs/service.log
 
@@ -171,6 +172,10 @@ systemctl status muxrunner.service
 
 Adjust `User`, `WorkingDirectory`, and the `node` path for your host. Service
 output goes to `logs/service.log` (and `journalctl -u muxrunner`).
+
+Keep `KillMode=process`: MuxRunner intentionally launches long-lived tmux sessions,
+and this setting lets service deployments restart only the web process without
+terminating retained sessions or the commands running inside them.
 
 ### Restart the service
 
