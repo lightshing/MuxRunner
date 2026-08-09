@@ -3,40 +3,42 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#111827" />
     <title>MuxRunner</title>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
-    <link rel="stylesheet" href="styles.css?v=4" />
+    <link rel="stylesheet" href="styles.css?v=5" />
     <link
       rel="icon"
       href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>⚡</text></svg>"
     />
   </head>
   <body>
+    <div class="app-progress is-active" id="app-progress" role="progressbar" aria-label="Loading workspace"></div>
     <div class="app">
       <aside class="sidebar">
         <div class="brand">
-          <div class="brand-mark">⚡</div>
+          <div class="brand-mark" aria-hidden="true">⚡</div>
           <div>
             <div class="brand-name">MuxRunner</div>
             <div class="brand-sub">tmux command orchestrator</div>
           </div>
         </div>
         <nav class="nav">
-          <button class="nav-item active" data-view="compose">
-            <span class="nav-ico">✎</span> Compose
+          <button class="nav-item active" data-view="compose" aria-current="page">
+            <span class="nav-ico" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M4 20h4l10.5-10.5a2.8 2.8 0 0 0-4-4L4 16v4Z"/><path d="m13.5 6.5 4 4"/></svg></span> Compose
           </button>
           <button class="nav-item" data-view="sessions">
-            <span class="nav-ico">◴</span> Sessions
+            <span class="nav-ico" aria-hidden="true"><svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="3"/><path d="m7 9 3 3-3 3M13 15h4"/></svg></span> Sessions
             <span class="badge" id="sessions-count">0</span>
           </button>
           <button class="nav-item" data-view="history">
-            <span class="nav-ico">⧗</span> History
+            <span class="nav-ico" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5M12 7v5l3 2"/></svg></span> History
             <span class="badge" id="history-count">0</span>
           </button>
         </nav>
         <div class="sidebar-foot">
           <span class="dot" id="conn-dot"></span>
-          <span id="conn-label">connecting…</span>
+          <span id="conn-label" aria-live="polite">connecting…</span>
         </div>
       </aside>
 
@@ -124,7 +126,12 @@
             </div>
           </div>
           <div class="sessions-grid" id="sessions-grid"></div>
-          <div class="empty" id="sessions-empty">No active sessions yet.</div>
+          <div class="empty" id="sessions-empty">
+            <span class="empty-icon" aria-hidden="true">▷</span>
+            <strong>No active sessions</strong>
+            <span>Compose a command set to start your first tmux run.</span>
+            <button class="btn ghost sm" data-go-compose>Create a command set</button>
+          </div>
         </section>
 
         <!-- HISTORY ------------------------------------------------------>
@@ -137,13 +144,18 @@
             </p>
           </header>
           <div class="history-list" id="history-list"></div>
-          <div class="empty" id="history-empty">No runs recorded yet.</div>
+          <div class="empty" id="history-empty">
+            <span class="empty-icon" aria-hidden="true">↺</span>
+            <strong>No run history yet</strong>
+            <span>Completed and retained runs will appear here.</span>
+            <button class="btn ghost sm" data-go-compose>Create a command set</button>
+          </div>
         </section>
       </main>
 
       <!-- DETAIL DRAWER -------------------------------------------------->
       <div class="drawer-scrim hidden" id="drawer-scrim"></div>
-      <aside class="drawer hidden" id="drawer">
+      <aside class="drawer hidden" id="drawer" aria-busy="false">
         <header class="drawer-head">
           <div>
             <div class="drawer-title" id="drawer-title">—</div>
@@ -200,8 +212,8 @@
         </div>
       </div>
 
-      <div class="toast" id="toast"></div>
+      <div class="toast" id="toast" role="status" aria-live="polite"></div>
     </div>
-    <script src="app.js?v=3"></script>
+    <script src="app.js?v=4"></script>
   </body>
 </html>
