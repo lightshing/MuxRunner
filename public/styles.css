@@ -165,7 +165,8 @@ button, input, textarea { font-family: inherit; }
 .ui-dt-field {
   width: 100%; cursor: pointer; user-select: none; background: var(--bg-2);
   border: 1px solid var(--border-2); border-radius: 10px; padding: 12px 14px;
-  font-size: 14px; color: var(--text); outline: none; min-height: 46px;
+  font: inherit; font-size: 14px; text-align: left; color: var(--text);
+  outline: none; min-height: 46px;
   display: flex; align-items: center; gap: 10px; transition: border 0.15s, box-shadow 0.15s;
 }
 .ui-dt-field:focus, .ui-datetime.open .ui-dt-field {
@@ -173,20 +174,24 @@ button, input, textarea { font-family: inherit; }
 }
 .ui-dt-text { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .ui-dt-text.placeholder { color: var(--faint); }
-.ui-dt-field .ui-select-caret { position: static; }
-.ui-dt-pop {
-  /* Pops upward (above the field) so it doesn't get clipped near the bottom of
-     the compose card. */
-  position: absolute; bottom: calc(100% + 6px); left: 0; z-index: 40; width: 300px; max-width: 92vw;
-  background: var(--panel); border: 1px solid var(--border-2); border-radius: 14px;
-  box-shadow: var(--shadow); padding: 14px; display: none;
+.ui-dt-ico { flex: 0 0 auto; width: 18px; height: 18px; display: grid; place-items: center; color: var(--accent); }
+.ui-dt-ico svg, .ui-dt-nav svg {
+  width: 17px; height: 17px; fill: none; stroke: currentColor;
+  stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round;
 }
-.ui-datetime.open .ui-dt-pop { display: block; }
+.ui-dt-pop {
+  /* Portalled onto <body> and placed against the field's viewport rect by JS, so
+     a scrolling card can never clip or re-stack the calendar. */
+  position: fixed; top: 0; left: 0; z-index: 80; width: 320px; max-width: calc(100vw - 20px);
+  background: var(--panel); border: 1px solid var(--border-2); border-radius: 14px;
+  box-shadow: var(--shadow); padding: 14px;
+}
 .ui-dt-cal-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; }
 .ui-dt-title { font-weight: 600; font-size: 14px; }
 .ui-dt-nav {
   border: 1px solid var(--border-2); background: var(--bg-2); color: var(--muted);
-  width: 30px; height: 30px; border-radius: 8px; cursor: pointer; font-size: 16px; line-height: 1;
+  width: 30px; height: 30px; border-radius: 8px; cursor: pointer; line-height: 1;
+  display: grid; place-items: center; padding: 0;
 }
 .ui-dt-nav:hover { background: var(--panel-2); color: var(--text); }
 .ui-dt-dow, .ui-dt-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 2px; }
@@ -195,8 +200,8 @@ button, input, textarea { font-family: inherit; }
   border: 0; background: transparent; color: var(--text); cursor: pointer;
   aspect-ratio: 1; border-radius: 8px; font-size: 13px; padding: 0;
 }
-.ui-dt-cell:hover:not(.empty):not([disabled]) { background: var(--panel-2); }
-.ui-dt-cell.empty { cursor: default; }
+.ui-dt-cell:hover:not(.blank):not([disabled]) { background: var(--panel-2); }
+.ui-dt-cell.blank { cursor: default; }
 .ui-dt-cell.today { box-shadow: inset 0 0 0 1px var(--border-2); }
 .ui-dt-cell.sel { background: linear-gradient(135deg, var(--accent), var(--accent-2)); color: #fff; font-weight: 600; }
 .ui-dt-cell[disabled] { color: var(--faint); opacity: 0.4; cursor: default; }
@@ -204,7 +209,8 @@ button, input, textarea { font-family: inherit; }
 .ui-dt-time-lbl { font-size: 12px; color: var(--muted); margin-right: 4px; }
 .ui-dt-colon { font-weight: 700; color: var(--muted); }
 .ui-dt-tz { margin-left: auto; font-size: 11px; color: var(--faint); }
-.ui-dt-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 14px; }
+.ui-dt-actions { display: flex; align-items: center; gap: 8px; margin-top: 14px; }
+.ui-dt-spacer { flex: 1; }
 
 /* The directory a fresh tmux session starts in. */
 .pwd-line {
@@ -519,8 +525,12 @@ button, input, textarea { font-family: inherit; }
   --green: #079455;
   --amber: #b54708;
   --red: #d92d20;
-  --sidebar: #111827;
-  --sidebar-2: #182235;
+  /* The nav rail is a light, faintly violet-tinted surface — a quiet sibling of
+     the page rather than a slab of contrast against it. */
+  --sidebar: #f1f2f9;
+  --sidebar-2: #f9f8fd;
+  --sidebar-border: #e4e5ef;
+  --sidebar-text: #3f4757;
   --shadow-sm: 0 1px 2px rgba(16, 24, 40, 0.04), 0 1px 3px rgba(16, 24, 40, 0.06);
   --shadow: 0 12px 32px rgba(24, 30, 52, 0.08), 0 2px 8px rgba(24, 30, 52, 0.04);
   --shadow-lg: 0 24px 64px rgba(15, 23, 42, 0.18);
@@ -565,39 +575,40 @@ button:focus-visible, input:focus-visible, textarea:focus-visible,
 
 .app { grid-template-columns: 256px minmax(0, 1fr); min-height: 100vh; height: 100dvh; }
 
-/* Navigation becomes a high-contrast, calm anchor for every view. */
+/* Navigation is a calm, light anchor: a tinted rail separated from the canvas by
+   a hairline, with the accent reserved for the active view. */
 .sidebar {
   position: relative; z-index: 10; padding: 24px 16px 18px;
   background:
-    radial-gradient(240px 180px at 14% 0, rgba(139, 92, 246, .2), transparent 72%),
+    radial-gradient(260px 190px at 14% -4%, rgba(139, 92, 246, .13), transparent 72%),
     linear-gradient(180deg, var(--sidebar-2), var(--sidebar));
-  border-right: 0; color: #f8fafc;
-  box-shadow: 8px 0 30px rgba(15, 23, 42, .06);
+  border-right: 1px solid var(--sidebar-border); color: var(--sidebar-text);
+  box-shadow: none;
 }
 .brand { padding: 3px 9px 28px; gap: 12px; }
 .brand-mark {
   width: 42px; height: 42px; border-radius: 13px; color: #fff;
   background: linear-gradient(145deg, #8b7cf6, #6558e8);
-  border: 1px solid rgba(255,255,255,.2);
-  box-shadow: 0 10px 24px rgba(72, 53, 180, .35), inset 0 1px rgba(255,255,255,.18);
+  border: 1px solid rgba(255,255,255,.35);
+  box-shadow: 0 8px 18px rgba(101, 88, 232, .28), inset 0 1px rgba(255,255,255,.3);
 }
-.brand-name { font-size: 16px; color: #fff; letter-spacing: -.25px; }
-.brand-sub { margin-top: 1px; color: #98a2b3; letter-spacing: .01em; }
+.brand-name { font-size: 16px; color: #1d2939; letter-spacing: -.25px; }
+.brand-sub { margin-top: 1px; color: var(--faint); letter-spacing: .01em; }
 
 .nav { gap: 6px; }
 .nav-item {
   position: relative; min-height: 44px; padding: 11px 12px; border-radius: 11px;
-  color: #aeb7c7; font-weight: 550;
-  transition: color .18s ease, background .18s ease, transform .18s ease;
+  color: var(--sidebar-text); font-weight: 550;
+  transition: color .18s ease, background .18s ease, box-shadow .18s ease, transform .18s ease;
 }
 .nav-item::before {
   content: ""; position: absolute; left: -4px; top: 11px; bottom: 11px;
-  width: 3px; border-radius: 4px; background: #a99cff;
+  width: 3px; border-radius: 4px; background: var(--accent);
   opacity: 0; transform: scaleY(.45); transition: .2s var(--ease);
 }
-.nav-item:hover { background: rgba(255,255,255,.06); color: #fff; transform: translateX(2px); }
+.nav-item:hover { background: rgba(101, 88, 232, .07); color: #1d2939; transform: translateX(2px); }
 .nav-item.active {
-  color: #fff; background: linear-gradient(90deg, rgba(124, 108, 246, .2), rgba(124, 108, 246, .08));
+  color: #4a3fc4; background: #fff; box-shadow: var(--shadow-sm);
 }
 .nav-item.active::before { opacity: 1; transform: scaleY(1); }
 .nav-ico { width: 19px; height: 19px; display: grid; place-items: center; opacity: 1; }
@@ -606,18 +617,18 @@ button:focus-visible, input:focus-visible, textarea:focus-visible,
   stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round;
 }
 .badge {
-  min-width: 22px; padding: 2px 7px; color: #c7ced9;
-  background: rgba(255,255,255,.09); border: 1px solid rgba(255,255,255,.07);
+  min-width: 22px; padding: 2px 7px; color: #667085;
+  background: rgba(255,255,255,.75); border: 1px solid var(--sidebar-border);
 }
-.nav-item.active .badge { color: #fff; background: rgba(139, 124, 246, .3); }
+.nav-item.active .badge { color: var(--accent); background: var(--accent-soft); border-color: #ddd8fb; }
 .sidebar-foot {
-  margin: auto 2px 0; padding: 10px 12px; color: #98a2b3;
-  border: 1px solid rgba(255,255,255,.06); border-radius: 11px;
-  background: rgba(255,255,255,.035);
+  margin: auto 2px 0; padding: 10px 12px; color: var(--muted);
+  border: 1px solid var(--sidebar-border); border-radius: 11px;
+  background: rgba(255,255,255,.66);
 }
 .dot { width: 7px; height: 7px; }
-.dot.on { background: #32d583; box-shadow: 0 0 0 4px rgba(50,213,131,.1); }
-.dot.off { background: #f97066; animation: soft-pulse 1.8s ease-in-out infinite; }
+.dot.on { background: #17b26a; box-shadow: 0 0 0 4px rgba(23,178,106,.14); }
+.dot.off { background: #f04438; animation: soft-pulse 1.8s ease-in-out infinite; }
 
 /* Content hierarchy */
 .main { min-width: 0; padding: 46px clamp(28px, 4vw, 64px) 64px; scroll-behavior: smooth; }
@@ -668,7 +679,11 @@ button:focus-visible, input:focus-visible, textarea:focus-visible,
   from { opacity: 0; transform: translateY(-4px) scale(.985); }
   to { opacity: 1; transform: none; }
 }
-.ui-dt-pop { transform-origin: bottom left; }
+.ui-dt-pop { transform-origin: top left; }
+.ui-dt-pop.flip { transform-origin: bottom left; }
+.ui-dt-nav { background: #f4f5f9; }
+.ui-dt-nav:hover { background: var(--accent-soft); color: var(--accent); border-color: #cdc6f7; }
+.ui-dt-cell.today:not(.sel) { box-shadow: inset 0 0 0 1px #cdc6f7; color: var(--accent); font-weight: 650; }
 .ui-select-opt { transition: background .12s ease, color .12s ease; }
 .ui-select-opt.sel { background: var(--accent-soft); color: #5647d7; }
 .ui-step-btn { background: #f4f5f9; }
@@ -844,7 +859,9 @@ button:focus-visible, input:focus-visible, textarea:focus-visible,
   .app { grid-template-columns: 1fr; grid-template-rows: auto minmax(0, 1fr); }
   .sidebar {
     flex-direction: row; align-items: center; gap: 12px; padding: 11px 14px;
-    background: var(--sidebar); box-shadow: 0 5px 20px rgba(15,23,42,.14);
+    background: var(--sidebar); border-right: 0;
+    border-bottom: 1px solid var(--sidebar-border);
+    box-shadow: 0 3px 14px rgba(24, 30, 52, .05);
   }
   .brand { flex: 0 0 auto; padding: 0; }
   .brand-mark { width: 36px; height: 36px; border-radius: 11px; font-size: 17px; }
@@ -876,7 +893,9 @@ button:focus-visible, input:focus-visible, textarea:focus-visible,
   .compose-actions .hint { min-height: 0; margin: 0; }
   .compose-actions .btn { width: 100%; }
   .field.inline-num { flex: 1 1 120px; }
-  .ui-dt-pop { left: -1px; width: min(300px, calc(100vw - 60px)); }
+  /* JS supplies top/left; only the footprint changes on small screens. */
+  .ui-dt-pop { width: min(320px, calc(100vw - 20px)); padding: 12px; }
+  .ui-dt-actions { flex-wrap: wrap; }
   .session-card { padding: 17px; }
   .card-actions { flex-wrap: wrap; }
   .card-actions .btn { flex: 1 1 auto; }

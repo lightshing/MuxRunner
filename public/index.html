@@ -3,10 +3,10 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <meta name="theme-color" content="#111827" />
+    <meta name="theme-color" content="#f1f2f9" />
     <title>MuxRunner</title>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
-    <link rel="stylesheet" href="styles.css?v=5" />
+    <link rel="stylesheet" href="styles.css?v=6" />
     <link
       rel="icon"
       href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>⚡</text></svg>"
@@ -76,31 +76,34 @@
                 ></textarea>
               </div>
             </label>
-            <label class="field">
+            <!-- These fields host custom widgets rather than native inputs, so
+                 they are plain divs: a <label> would forward every stray click
+                 to the first <button> inside the widget. -->
+            <div class="field">
               <span>When to run <em>(trigger)</em></span>
               <div class="ui-select" id="trigger-type" data-value="now"></div>
-            </label>
+            </div>
             <div class="trigger-opt hidden" id="trigger-time-row">
-              <label class="field">
+              <div class="field">
                 <span>Start at <em class="tz-note" id="tz-note"></em></span>
                 <div class="ui-datetime" id="trigger-time"></div>
-              </label>
+              </div>
             </div>
             <div class="trigger-opt hidden" id="trigger-delay-row">
-              <label class="field inline-num">
+              <div class="field inline-num">
                 <span>Hours</span>
                 <div class="ui-stepper" id="trigger-h" data-value="0" data-min="0"></div>
-              </label>
-              <label class="field inline-num">
+              </div>
+              <div class="field inline-num">
                 <span>Minutes</span>
                 <div class="ui-stepper" id="trigger-m" data-value="30" data-min="0" data-max="59"></div>
-              </label>
+              </div>
             </div>
             <div class="trigger-opt hidden" id="trigger-after-row">
-              <label class="field">
+              <div class="field">
                 <span>Wait for this session to finish</span>
                 <div class="ui-select" id="trigger-after" data-empty="— no running sessions —"></div>
-              </label>
+              </div>
             </div>
             <div class="compose-actions">
               <span class="hint" id="compose-hint"></span>
@@ -214,6 +217,6 @@
 
       <div class="toast" id="toast" role="status" aria-live="polite"></div>
     </div>
-    <script src="app.js?v=4"></script>
+    <script src="app.js?v=5"></script>
   </body>
 </html>

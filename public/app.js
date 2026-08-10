@@ -481,77 +481,188 @@ class UIStepper {
   set value(v) { this._set(+v || 0); }
 }
 
+// Inline icons for the picker. Drawn as SVG rather than emoji/typographic
+// glyphs so the control renders identically everywhere, whatever fonts a
+// viewer's browser happens to fall back to.
+const DT_ICON_CAL =
+  '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="5" width="18" height="16" rx="3"/>' +
+  '<path d="M8 3v4M16 3v4M3 10h18"/></svg>';
+const DT_ICON_PREV = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m14 6-6 6 6 6"/></svg>';
+const DT_ICON_NEXT = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m10 6 6 6-6 6"/></svg>';
+
 // A styled date + time picker (calendar grid + hour/minute steppers) replacing
 // <input type="datetime-local">. Times are interpreted in the viewer's local
 // timezone, which is shown in the popup. .getTime() → epoch ms (or null).
+//
+// The popup is portalled onto <body> and placed with position:fixed against the
+// field's viewport rect. Anchoring it inside the host instead used to leave it
+// clipped by (or stacked under) whatever card was scrolling around it, so the
+// calendar could open as a sliver of overlapping rows.
 class UIDateTime {
+  static active = null; // only one picker is open at a time
+  static _bound = false;
+
   constructor(el) {
     this.el = el;
     this.date = null; // chosen day (Date at local midnight) or null
     const now = new Date();
     this.viewY = now.getFullYear();
     this.viewM = now.getMonth();
+    // A real <button> for the field: it makes the control keyboard-operable and,
+    // when the picker sits inside a <label>, it becomes that label's target so a
+    // click on the caption opens the picker instead of firing whichever button
+    // happened to come first in the popup markup.
     el.innerHTML =
-      '<div class="ui-dt-field" tabindex="0">' +
+      '<button type="button" class="ui-dt-field" aria-haspopup="dialog" aria-expanded="false">' +
+        `<span class="ui-dt-ico">${DT_ICON_CAL}</span>` +
         '<span class="ui-dt-text placeholder">Pick a date &amp; time</span>' +
-        '<span class="ui-select-caret">🗓</span>' +
-      '</div>' +
-      '<div class="ui-dt-pop">' +
-        '<div class="ui-dt-cal-head">' +
-          '<button type="button" class="ui-dt-nav" data-d="-1">‹</button>' +
-          '<span class="ui-dt-title"></span>' +
-          '<button type="button" class="ui-dt-nav" data-d="1">›</button>' +
-        '</div>' +
-        '<div class="ui-dt-dow"></div>' +
-        '<div class="ui-dt-grid"></div>' +
-        '<div class="ui-dt-time">' +
-          '<span class="ui-dt-time-lbl">Time</span>' +
-          '<div class="ui-stepper sm" data-min="0" data-max="23" data-value="9"></div>' +
-          '<span class="ui-dt-colon">:</span>' +
-          '<div class="ui-stepper sm" data-min="0" data-max="59" data-value="0"></div>' +
-          '<span class="ui-dt-tz"></span>' +
-        '</div>' +
-        '<div class="ui-dt-actions">' +
-          '<button type="button" class="btn ghost sm ui-dt-clear">Clear</button>' +
-          '<button type="button" class="btn primary sm ui-dt-done">Done</button>' +
-        '</div>' +
-      '</div>';
+      '</button>';
     this.fieldEl = el.querySelector('.ui-dt-field');
     this.textEl = el.querySelector('.ui-dt-text');
-    this.titleEl = el.querySelector('.ui-dt-title');
-    this.gridEl = el.querySelector('.ui-dt-grid');
-    el.querySelector('.ui-dt-dow').innerHTML = ['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa']
+
+    this.pop = document.createElement('div');
+    this.pop.className = 'ui-dt-pop';
+    this.pop.setAttribute('role', 'dialog');
+    this.pop.setAttribute('aria-label', 'Choose date and time');
+    this.pop.innerHTML =
+      '<div class="ui-dt-cal-head">' +
+        `<button type="button" class="ui-dt-nav" data-d="-1" aria-label="Previous month">${DT_ICON_PREV}</button>` +
+        '<span class="ui-dt-title"></span>' +
+        `<button type="button" class="ui-dt-nav" data-d="1" aria-label="Next month">${DT_ICON_NEXT}</button>` +
+      '</div>' +
+      '<div class="ui-dt-dow"></div>' +
+      '<div class="ui-dt-grid"></div>' +
+      '<div class="ui-dt-time">' +
+        '<span class="ui-dt-time-lbl">Time</span>' +
+        '<div class="ui-stepper sm" data-min="0" data-max="23" data-value="9"></div>' +
+        '<span class="ui-dt-colon">:</span>' +
+        '<div class="ui-stepper sm" data-min="0" data-max="59" data-value="0"></div>' +
+        '<span class="ui-dt-tz"></span>' +
+      '</div>' +
+      '<div class="ui-dt-actions">' +
+        '<button type="button" class="btn ghost sm ui-dt-today">Today</button>' +
+        '<span class="ui-dt-spacer"></span>' +
+        '<button type="button" class="btn ghost sm ui-dt-clear">Clear</button>' +
+        '<button type="button" class="btn primary sm ui-dt-done">Done</button>' +
+      '</div>';
+    this.titleEl = this.pop.querySelector('.ui-dt-title');
+    this.gridEl = this.pop.querySelector('.ui-dt-grid');
+    this.pop.querySelector('.ui-dt-dow').innerHTML = ['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa']
       .map((d) => `<span>${d}</span>`).join('');
-    el.querySelector('.ui-dt-tz').textContent = tzLabel();
-    const steppers = el.querySelectorAll('.ui-stepper');
+    this.pop.querySelector('.ui-dt-tz').textContent = tzLabel();
+    const steppers = this.pop.querySelectorAll('.ui-stepper');
     this.hour = new UIStepper(steppers[0], () => this._renderField());
     this.minute = new UIStepper(steppers[1], () => this._renderField());
 
-    this.fieldEl.addEventListener('click', () => {
-      // When opening with nothing chosen yet, land on the current month so the
-      // picker always shows today first.
-      if (!el.classList.contains('open') && !this.date) {
-        const now = new Date();
-        this.viewY = now.getFullYear();
-        this.viewM = now.getMonth();
-        this._renderGrid();
-      }
-      el.classList.toggle('open');
+    this.fieldEl.addEventListener('click', (e) => {
+      e.preventDefault();
+      this.isOpen() ? this.close() : this.open();
     });
-    el.querySelectorAll('.ui-dt-nav').forEach((b) =>
+    // The popup lives on <body>, so card-level click handlers never see it.
+    this.pop.querySelectorAll('.ui-dt-nav').forEach((b) =>
       b.addEventListener('click', () => { this._shiftMonth(+b.dataset.d); })
     );
-    el.querySelector('.ui-dt-clear').addEventListener('click', () => { this.date = null; this._renderGrid(); this._renderField(); });
-    el.querySelector('.ui-dt-done').addEventListener('click', () => el.classList.remove('open'));
-    document.addEventListener('click', (e) => { if (!el.contains(e.target)) el.classList.remove('open'); });
+    this.pop.querySelector('.ui-dt-today').addEventListener('click', () => {
+      const t = new Date();
+      this.viewY = t.getFullYear();
+      this.viewM = t.getMonth();
+      this.date = new Date(t.getFullYear(), t.getMonth(), t.getDate());
+      this._renderGrid();
+      this._renderField();
+    });
+    this.pop.querySelector('.ui-dt-clear').addEventListener('click', () => { this.date = null; this._renderGrid(); this._renderField(); });
+    this.pop.querySelector('.ui-dt-done').addEventListener('click', () => this.close());
+
+    UIDateTime._bind();
     this._renderGrid();
     this._renderField();
   }
+
+  // One set of document-level listeners drives whichever picker is open.
+  static _bind() {
+    if (UIDateTime._bound) return;
+    UIDateTime._bound = true;
+    document.addEventListener('click', (e) => {
+      const a = UIDateTime.active;
+      if (a && !a.el.contains(e.target) && !a.pop.contains(e.target)) a.close();
+    });
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape' && UIDateTime.active) UIDateTime.active.close();
+    });
+    // Follow the field while the page (or any scroller under it) moves; if the
+    // field scrolls out of sight, dismiss instead of leaving a floating panel.
+    const track = () => {
+      const a = UIDateTime.active;
+      if (!a) return;
+      if (!document.body.contains(a.el)) return a.close();
+      const r = a.fieldEl.getBoundingClientRect();
+      if (r.bottom < 0 || r.top > window.innerHeight) return a.close();
+      a._place();
+    };
+    document.addEventListener('scroll', track, true);
+    window.addEventListener('resize', track);
+  }
+
+  // Drop a popup whose field has been removed from the DOM (pending cards are
+  // rebuilt from scratch on every update).
+  static dropOrphans() {
+    const a = UIDateTime.active;
+    if (a && !document.body.contains(a.el)) a.close();
+  }
+
+  isOpen() { return UIDateTime.active === this; }
+
+  open() {
+    if (UIDateTime.active) UIDateTime.active.close();
+    // Opening with nothing chosen yet lands on the current month, so the picker
+    // always shows today first.
+    if (!this.date) {
+      const now = new Date();
+      this.viewY = now.getFullYear();
+      this.viewM = now.getMonth();
+    }
+    this._renderGrid();
+    document.body.appendChild(this.pop);
+    this.el.classList.add('open');
+    this.fieldEl.setAttribute('aria-expanded', 'true');
+    UIDateTime.active = this;
+    this._place();
+  }
+
+  close() {
+    if (UIDateTime.active === this) UIDateTime.active = null;
+    this.el.classList.remove('open');
+    this.fieldEl.setAttribute('aria-expanded', 'false');
+    this.pop.remove();
+  }
+
+  // Prefer below the field, flip above when the bottom of the viewport is
+  // closer, and always stay fully on screen.
+  _place() {
+    const r = this.fieldEl.getBoundingClientRect();
+    const w = this.pop.offsetWidth;
+    const h = this.pop.offsetHeight;
+    const pad = 10;
+    const gap = 8;
+    let top = r.bottom + gap;
+    let flip = false;
+    if (top + h > window.innerHeight - pad) {
+      const above = r.top - gap - h;
+      if (above >= pad) { top = above; flip = true; }
+      else top = Math.max(pad, window.innerHeight - pad - h);
+    }
+    const left = Math.min(Math.max(pad, r.left), Math.max(pad, window.innerWidth - pad - w));
+    this.pop.style.top = `${Math.round(top)}px`;
+    this.pop.style.left = `${Math.round(left)}px`;
+    this.pop.classList.toggle('flip', flip);
+  }
+
   _shiftMonth(d) {
     this.viewM += d;
     if (this.viewM < 0) { this.viewM = 11; this.viewY--; }
     else if (this.viewM > 11) { this.viewM = 0; this.viewY++; }
     this._renderGrid();
+    if (this.isOpen()) this._place();
   }
   _renderGrid() {
     this.titleEl.textContent = new Date(this.viewY, this.viewM, 1)
@@ -560,7 +671,9 @@ class UIDateTime {
     const days = new Date(this.viewY, this.viewM + 1, 0).getDate();
     const today = new Date(); today.setHours(0, 0, 0, 0);
     let html = '';
-    for (let i = 0; i < startDow; i++) html += '<span class="ui-dt-cell empty"></span>';
+    // "blank", not "empty": .empty is the app-wide empty-state panel (min-height
+    // 270px), and it would inflate every leading cell — and with it the grid.
+    for (let i = 0; i < startDow; i++) html += '<span class="ui-dt-cell blank"></span>';
     for (let d = 1; d <= days; d++) {
       const cell = new Date(this.viewY, this.viewM, d);
       const past = cell < today;
@@ -813,6 +926,8 @@ function renderPendingGroup(groupId, gridId, list) {
     buildPendingCard(card, p);
     grid.appendChild(card);
   }
+  // A discarded editor card must not leave its portalled date popup behind.
+  UIDateTime.dropOrphans();
 }
 
 // A queued task at rest: name, trigger summary, and its action buttons.
