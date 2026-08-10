@@ -2,27 +2,6 @@
 const $ = (sel, el = document) => el.querySelector(sel);
 const $$ = (sel, el = document) => [...el.querySelectorAll(sel)];
 
-const ICONS = {
-  play: "<path d=\"m9 7 8 5-8 5V7Z\"/>",
-  calendar: "<rect x=\"3.5\" y=\"5\" width=\"17\" height=\"15.5\" rx=\"3\"/><path d=\"M8 3v4M16 3v4M3.5 9.5h17\"/>",
-  link: "<path d=\"M9.5 14.5 14.5 9\"/><path d=\"M7.5 17H6a4 4 0 0 1 0-8h3M16.5 7H18a4 4 0 0 1 0 8h-3\"/>",
-  eye: "<path d=\"M2.5 12s3.5-6 9.5-6 9.5 6 9.5 6-3.5 6-9.5 6-9.5-6-9.5-6Z\"/><circle cx=\"12\" cy=\"12\" r=\"2.5\"/>",
-  clock: "<circle cx=\"12\" cy=\"12\" r=\"8.5\"/><path d=\"M12 7.5V12l3 2\"/>",
-  edit: "<path d=\"M4 20h4l10.5-10.5a2.8 2.8 0 0 0-4-4L4 16v4Z\"/><path d=\"m13.5 6.5 4 4\"/>",
-  close: "<path d=\"m7 7 10 10M17 7 7 17\"/>",
-  check: "<path d=\"m5 12 4.2 4.2L19 6.5\"/>",
-  copy: "<rect x=\"8\" y=\"8\" width=\"11\" height=\"11\" rx=\"2\"/><path d=\"M16 8V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h2\"/>",
-  stop: "<rect x=\"7\" y=\"7\" width=\"10\" height=\"10\" rx=\"2\"/>",
-  external: "<path d=\"M14 5h5v5M19 5l-8 8\"/><path d=\"M18 13v5a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5\"/>",
-  arrowRight: "<path d=\"M5 12h14M14 7l5 5-5 5\"/>",
-  terminal: "<rect x=\"3\" y=\"4\" width=\"18\" height=\"16\" rx=\"3\"/><path d=\"m7 9 3 3-3 3M13 15h4\"/>",
-};
-
-function icon(name, className = "ui-icon") {
-  return "<svg class=\"" + className + "\" viewBox=\"0 0 24 24\" aria-hidden=\"true\" focusable=\"false\">" +
-    (ICONS[name] || "") + "</svg>";
-}
-
 const state = {
   runs: new Map(), // id -> summary
   pending: new Map(), // id -> pending task summary (deferred / scheduled)
@@ -344,7 +323,7 @@ async function loadConfig() {
 }
 
 // ----- Line-number gutter for the commands editor -----
-// Numbers logical lines; soft-wrapped continuation rows get a · so wrapping is
+// Numbers logical lines; soft-wrapped continuation rows get a ↪ so wrapping is
 // visually distinct from a real newline. A hidden mirror measures how many
 // visual rows each line occupies at the textarea's current width.
 const cmdInput = $('#set-commands');
@@ -386,7 +365,7 @@ function rebuildGutter() {
     m.textContent = lines[i].length ? lines[i] : ' ';
     const rows = Math.max(1, Math.round(m.offsetHeight / lh));
     out += i + 1 + '\n';
-    for (let r = 1; r < rows; r++) out += '·\n';
+    for (let r = 1; r < rows; r++) out += '↪\n';
   }
   cmdGutter.textContent = out;
   syncGutterScroll();
@@ -515,7 +494,7 @@ class UIDateTime {
     el.innerHTML =
       '<div class="ui-dt-field" tabindex="0">' +
         '<span class="ui-dt-text placeholder">Pick a date &amp; time</span>' +
-        '<span class="ui-select-caret">' + icon("calendar") + '</span>' +
+        '<span class="ui-select-caret">🗓</span>' +
       '</div>' +
       '<div class="ui-dt-pop">' +
         '<div class="ui-dt-cal-head">' +
@@ -622,11 +601,11 @@ class UIDateTime {
 // it reads as "schedule / hold / run" depending on the selection.
 const triggerType = new UISelect($('#trigger-type'), {
   options: [
-    { value: 'now', label: 'Run now' },
-    { value: 'hold', label: 'Hold — start manually later' },
-    { value: 'time', label: 'At a specific time' },
-    { value: 'delay', label: 'After a delay' },
-    { value: 'after', label: 'After another session finishes' },
+    { value: 'now', label: '▶ Run now' },
+    { value: 'hold', label: '✋ Hold — start manually later' },
+    { value: 'time', label: '⏰ At a specific time' },
+    { value: 'delay', label: '⏳ After a delay' },
+    { value: 'after', label: '🔗 After another session finishes' },
   ],
   value: 'now',
   onChange: syncTriggerUI,
@@ -643,15 +622,12 @@ function syncTriggerUI() {
   $('#trigger-delay-row').classList.toggle('hidden', t !== 'delay');
   $('#trigger-after-row').classList.toggle('hidden', t !== 'after');
   if (t === 'after') fillAfterOptions();
-  const btn = $("#run-btn");
-  const action = t === "now"
-    ? ["play", "Run command set"]
-    : t === "hold"
-      ? ["calendar", "Save for later"]
-      : t === "after"
-        ? ["link", "Queue after session"]
-        : ["clock", "Schedule command set"];
-  btn.innerHTML = icon(action[0]) + "<span>" + action[1] + "</span>";
+  const btn = $('#run-btn');
+  btn.textContent =
+    t === 'now' ? '▶ Run command set'
+    : t === 'hold' ? '✋ Save — start manually later'
+    : t === 'after' ? '🔗 Queue after session'
+    : '⏳ Schedule command set';
 }
 
 // Populate the "wait for this session" picker with the currently-active runs.
@@ -844,10 +820,10 @@ function buildPendingCard(card, p) {
   const t = p.trigger || {};
   const when =
     (t.type === 'time' || t.type === 'delay') && t.runAt
-      ? `fires in <span data-countdown-to="${t.runAt}"></span>`
+      ? `⏱ fires in <span data-countdown-to="${t.runAt}"></span>`
       : t.type === 'after'
-        ? `${esc(triggerLabel(t))}`
-        : 'manual start';
+        ? `🔗 ${esc(triggerLabel(t))}`
+        : '✋ manual start';
   card.innerHTML = `
     <div class="row">
       <div>
@@ -858,19 +834,18 @@ function buildPendingCard(card, p) {
     </div>
     <div class="session-meta">${p.commands.length} step${p.commands.length === 1 ? '' : 's'} · ${when}</div>
     <div class="card-actions">
-      <button class="btn primary sm" data-act="start">${icon("play")}<span>Start now</span></button>
-      <button class="btn ghost sm" data-act="preview">${icon("eye")}<span>Preview</span></button>
-      <button class="btn ghost sm" data-act="trigger">${icon("clock")}<span>Trigger</span></button>
-      <button class="btn ghost sm" data-act="edit">${icon("edit")}<span>Edit</span></button>
-      <button class="btn danger sm" data-act="cancel">${icon("close")}<span>Cancel</span></button>
+      <button class="btn primary sm" data-act="start">▶ Start now</button>
+      <button class="btn ghost sm" data-act="preview">👁 Preview</button>
+      <button class="btn ghost sm" data-act="trigger">⏲ Trigger</button>
+      <button class="btn ghost sm" data-act="edit">✎ Edit</button>
+      <button class="btn danger sm" data-act="cancel">✕ Cancel</button>
     </div>`;
   card.addEventListener('click', (e) => {
-    const target = e.target.closest("[data-act]");
-    const act = target && target.dataset.act;
+    const act = e.target.dataset.act;
     if (!act) return;
     e.stopPropagation();
-    if (act === "start") startPending(p.id, target);
-    else if (act === "cancel") cancelPending(p.id, target);
+    if (act === "start") startPending(p.id, e.target);
+    else if (act === "cancel") cancelPending(p.id, e.target);
     else if (act === 'edit') editPending(p);
     else if (act === 'preview') previewPending(p);
     else if (act === 'trigger') openTriggerEdit(p);
@@ -936,7 +911,7 @@ function buildTriggerEditCard(card, p) {
       <div class="te-row te-after hidden"><div class="ui-select te-after-sel" data-empty="— no running sessions —"></div></div>
     </div>
     <div class="card-actions">
-      <button class="btn primary sm" data-act="save">${icon("check")}<span>Save trigger</span></button>
+      <button class="btn primary sm" data-act="save">✓ Save trigger</button>
       <button class="btn ghost sm" data-act="canceledit">Cancel</button>
     </div>`;
 
@@ -948,10 +923,10 @@ function buildTriggerEditCard(card, p) {
 
   new UISelect(card.querySelector('.te-type'), {
     options: [
-      { value: 'hold', label: 'Hold — start manually later' },
-      { value: 'time', label: 'At a specific time' },
-      { value: 'delay', label: 'After a delay' },
-      { value: 'after', label: 'After another session finishes' },
+      { value: 'hold', label: '✋ Hold — start manually later' },
+      { value: 'time', label: '⏰ At a specific time' },
+      { value: 'delay', label: '⏳ After a delay' },
+      { value: 'after', label: '🔗 After another session finishes' },
     ],
     value: d.type,
     onChange: (v) => { d.type = v; syncRows(); },
@@ -975,12 +950,11 @@ function buildTriggerEditCard(card, p) {
   syncRows();
 
   card.addEventListener('click', (e) => {
-    const target = e.target.closest("[data-act]");
-    const act = target && target.dataset.act;
+    const act = e.target.dataset.act;
     if (!act) return;
     e.stopPropagation();
     if (act === 'canceledit') { state.triggerEdit = null; renderPending(); }
-    else if (act === "save") saveTriggerEdit(p.id, d, timePick, afterSel, target);
+    else if (act === "save") saveTriggerEdit(p.id, d, timePick, afterSel, e.target);
   });
 }
 
@@ -1041,7 +1015,7 @@ async function cancelPending(id, button) {
   const ok = await confirmDialog({
     title: 'Cancel pending task?',
     body: `Remove ${p ? `“${p.name}”` : 'this task'} from the queue. It will not run.`,
-    confirmText: 'Cancel task',
+    confirmText: '✕ Cancel task',
   });
   if (!ok) return;
   setButtonBusy(button, true, "Cancelling…");
@@ -1101,10 +1075,10 @@ function renderSessions() {
     const live = r.status === 'running' || r.status === 'starting';
     const since = r.startedAt || r.createdAt;
     const durHtml = live
-      ? ` · <span data-elapsed-since="${since}"></span>`
-      : r.durationMs != null ? ` · ${fmtDuration(r.durationMs)}` : '';
+      ? ` · ⏱ <span data-elapsed-since="${since}"></span>`
+      : r.durationMs != null ? ` · ⏱ ${fmtDuration(r.durationMs)}` : '';
     const card = document.createElement('div');
-    card.className = "session-card " + r.status;
+    card.className = 'session-card';
     card.innerHTML = `
       <div class="row">
         <div>
@@ -1117,15 +1091,14 @@ function renderSessions() {
       <div class="session-meta">${r.done}/${r.total} steps${durHtml}</div>
       <div class="steps-mini">${ticksFor(r.id)}</div>
       <div class="card-actions">
-        <button class="btn ghost sm" data-act="view">${icon("eye")}<span>Watch</span></button>
-        <button class="btn ghost sm" data-act="copy">${icon("copy")}<span>Copy attach</span></button>
-        <button class="btn danger sm" data-act="end">${icon("stop")}<span>End</span></button>
+        <button class="btn ghost sm" data-act="view">Watch</button>
+        <button class="btn ghost sm" data-act="copy">Copy attach</button>
+        <button class="btn danger sm" data-act="end">⏻ End</button>
       </div>`;
     card.addEventListener('click', (e) => {
-      const target = e.target.closest("[data-act]");
-      const act = target && target.dataset.act;
+      const act = e.target.dataset.act;
       if (act === 'copy') { copy(r.attach); e.stopPropagation(); }
-      else if (act === "end") { e.stopPropagation(); endSession(r.id, target); }
+      else if (act === "end") { e.stopPropagation(); endSession(r.id, e.target); }
       else openDrawer(r.id);
     });
     grid.appendChild(card);
@@ -1173,7 +1146,7 @@ async function renderHistory() {
     row.dataset.id = r.id;
     row.innerHTML = `
       <div class="hrow-head">
-        <span class="chevron" aria-hidden="true"></span>
+        <span class="chevron">▸</span>
         <div>
           <h3>${esc(r.name)}</h3>
           <div class="hrow-when">${fmtTime(r.createdAt)} · ${esc(r.logFile)}</div>
@@ -1181,7 +1154,7 @@ async function renderHistory() {
         <div class="hrow-spacer"></div>
         <div class="hrow-summary">${r.done}/${r.total} ok${
       r.errored ? ' · <span class="e">error</span>' : ''
-    }${r.durationMs != null ? ` · ${fmtDuration(r.durationMs)}` : ''}</div>
+    }${r.durationMs != null ? ` · ⏱ ${fmtDuration(r.durationMs)}` : ''}</div>
         ${statusBadge(r.status)}
       </div>
       <div class="hrow-body"></div>`;
@@ -1220,7 +1193,7 @@ async function fillHistoryBody(id, row) {
     <button class="btn ghost sm col-all">Collapse all</button>
     <label class="checkline"><input type="checkbox" class="sel-all" /> Select all</label>
     <span class="cmd-tools-spacer"></span>
-    <button class="btn primary sm send-compose" disabled>${icon("arrowRight")}<span>Edit in Compose</span> <span class="seln">(0)</span></button>`;
+    <button class="btn primary sm send-compose" disabled>→ Edit in Compose <span class="seln">(0)</span></button>`;
   body.appendChild(tools);
 
   for (const c of meta.commands) {
@@ -1234,14 +1207,14 @@ async function fillHistoryBody(id, row) {
         <span class="dotmark ${c.status}"></span>
         <span class="cmd-idx">${c.idx}</span>
         <span class="cmd-text">${esc(c.text)}</span>
-        ${dur ? `<span class="cmd-dur">${dur}</span>` : ''}
+        ${dur ? `<span class="cmd-dur">⏱ ${dur}</span>` : ''}
         <span class="cmd-rc ${c.rc ? 'bad' : ''}">${rcTxt}</span>
-        <button class="mini-copy" title="Copy command" aria-label="Copy command">${icon("copy")}</button>
+        <button class="mini-copy" title="Copy command">⧉</button>
       </div>
       <div class="cmd-body"><pre class="console">${esc(c.output || '')}</pre></div>`;
     cmd.querySelector('.cmd-head').addEventListener('click', (e) => {
       if (e.target.classList.contains('cmd-sel')) return; // let checkbox toggle
-      if (e.target.closest(".mini-copy")) { copy(c.text); return; }
+      if (e.target.classList.contains('mini-copy')) { copy(c.text); return; }
       cmd.classList.toggle('open');
     });
     cmd.querySelector('.cmd-sel').addEventListener('change', () => updateSelState(body, meta));
@@ -1318,7 +1291,7 @@ async function endSession(id, button) {
   const ok = await confirmDialog({
     title: 'Close session?',
     body: `End the tmux session ${r ? `“${r.name}”` : ''} and stop any running command. The log is kept in History.`,
-    confirmText: 'Close session',
+    confirmText: '⏻ Close session',
   });
   if (!ok) return;
   setButtonBusy(button, true, "Closing…");
@@ -1401,12 +1374,8 @@ function renderDrawer(id) {
   const r = state.runs.get(id);
   const meta = state.details.get(id);
   if (!r) return;
-  const drawer = $("#drawer");
-  drawer.classList.remove("run-starting", "run-running", "run-paused", "run-completed", "run-closed");
-  drawer.classList.add("run-" + r.status);
-  $("#drawer-state-orb").className = "drawer-state-orb " + r.status;
   $('#drawer-title').textContent = r.name;
-  $('#drawer-sub').innerHTML = `${statusBadge(r.status)} <span class="drawer-session">${esc(
+  $('#drawer-sub').innerHTML = `${statusBadge(r.status)} <span style="color:var(--faint)">${esc(
     r.session
   )}</span>`;
   $('#drawer-attach-cmd').textContent = r.attach;
@@ -1414,26 +1383,20 @@ function renderDrawer(id) {
   const alive = LIVE_ACTIVE.has(r.status);
   $('#drawer-kill').style.display = alive ? '' : 'none';
   $('#drawer-live-status').textContent =
-    r.status === 'paused' ? 'Paused on error — attach to take over'
-    : r.status === 'running' ? 'Live output'
-    : r.status === 'completed' ? 'Finished — session retained'
+    r.status === 'paused' ? '⏸ paused on error — attach to take over'
+    : r.status === 'running' ? '● live'
+    : r.status === 'completed' ? '✓ finished (session retained)'
     : r.status === 'closed' ? 'session closed' : r.status;
 
   const t = meta ? runTiming(meta.commands, meta.finishedAt) : { durationMs: null, startedAt: null };
-  const commandTotal = meta ? meta.commands.length : (r.total || 0);
-  const commandDone = meta ? meta.commands.filter((c) => c.status === "done").length : (r.done || 0);
-  const progressPct = commandTotal ? Math.round((commandDone / commandTotal) * 100) : 0;
-  $("#drawer-progress-value").textContent = commandDone + " / " + commandTotal;
-  $("#drawer-progress-bar").style.width = progressPct + "%";
-  $("#drawer-progress").setAttribute("aria-valuenow", String(progressPct));
   // While running, tick the total live (now − execution start); else show the
   // final measured total.
   if (r.status === 'running' || r.status === 'starting') {
     const since = (t.startedAt || r.createdAt);
     $('#drawer-steps-total').innerHTML = since
-      ? `<span data-elapsed-since="${since}"></span> total` : '';
+      ? `⏱ <span data-elapsed-since="${since}"></span> total` : '';
   } else {
-    $('#drawer-steps-total').textContent = t.durationMs != null ? `${fmtDuration(t.durationMs)} total` : '';
+    $('#drawer-steps-total').textContent = t.durationMs != null ? `⏱ ${fmtDuration(t.durationMs)} total` : '';
   }
 
   const steps = $('#drawer-steps');
@@ -1450,17 +1413,17 @@ function renderDrawer(id) {
         <span class="cmd-idx">${c.idx}</span>
         <span class="cmd-text">${esc(c.text)}</span>
         ${
-          dur ? `<span class="cmd-dur">${dur}</span>`
+          dur ? `<span class="cmd-dur">⏱ ${dur}</span>`
           : c.status === 'running' && c.startedAt
-            ? `<span class="cmd-dur run"><span data-elapsed-since="${c.startedAt}"></span></span>`
+            ? `<span class="cmd-dur run">⏱ <span data-elapsed-since="${c.startedAt}"></span></span>`
           : c.status === 'running' ? '<span class="cmd-dur run">running…</span>' : ''
         }
         <span class="cmd-rc ${c.rc ? 'bad' : ''}">${c.rc == null ? '' : 'exit ' + c.rc}</span>
-        <button class="mini-copy" title="Copy command" aria-label="Copy command">${icon("copy")}</button>
+        <button class="mini-copy" title="Copy command">⧉</button>
       </div>
       <div class="dstep-body"><pre class="console">${esc(getStepOutput(id, c))}</pre></div>`;
     el.querySelector('.dstep-head').addEventListener('click', (e) => {
-      if (e.target.closest(".mini-copy")) { copy(c.text); return; }
+      if (e.target.classList.contains('mini-copy')) { copy(c.text); return; }
       el.classList.toggle('open');
       if (el.classList.contains('open')) state.drawerOpenSteps.add(c.idx);
       else state.drawerOpenSteps.delete(c.idx);
@@ -1518,14 +1481,14 @@ function confirmDialog({ title, body, confirmText = 'Confirm', cancelText = 'Can
 function setButtonBusy(btn, busy, label = "Working…") {
   if (!btn) return;
   if (busy) {
-    if (!btn.dataset.idleHtml) btn.dataset.idleHtml = btn.innerHTML;
+    if (!btn.dataset.idleLabel) btn.dataset.idleLabel = btn.textContent;
     btn.textContent = label;
     btn.disabled = true;
     btn.classList.add("is-loading");
     btn.setAttribute("aria-busy", "true");
   } else {
-    if (btn.dataset.idleHtml) btn.innerHTML = btn.dataset.idleHtml;
-    delete btn.dataset.idleHtml;
+    if (btn.dataset.idleLabel) btn.textContent = btn.dataset.idleLabel;
+    delete btn.dataset.idleLabel;
     btn.disabled = false;
     btn.classList.remove("is-loading");
     btn.removeAttribute("aria-busy");
@@ -1598,7 +1561,7 @@ async function refreshRuns() {
   }
 }
 
-// Preview modal: close with the button, scrim click, or Esc.
+// Preview modal: close on the ✕, on scrim click, or Esc.
 $('#preview-close').addEventListener('click', closePreview);
 $('#preview-scrim').addEventListener('mousedown', (e) => { if (e.target === $('#preview-scrim')) closePreview(); });
 document.addEventListener('keydown', (e) => {
