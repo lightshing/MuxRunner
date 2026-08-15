@@ -13,6 +13,7 @@ const state = {
   liveTimer: null, // capture-pane poll interval for the open live drawer
   triggerEdit: null, // { id, draft } while editing a pending task's trigger inline
   view: 'compose',
+  initialLoaded: false, // initial REST or WebSocket snapshot has settled
 };
 
 const LIVE_ACTIVE = new Set(['starting', 'running', 'paused', 'completed']);
@@ -21,6 +22,44 @@ const LIVE_ACTIVE = new Set(['starting', 'running', 'paused', 'completed']);
 // ticking seconds, progress bars — show live, which the line-by-line WS stream
 // cannot convey.
 const LIVE_POLL = new Set(['starting', 'running']);
+const RUN_TERMINAL = new Set(['completed', 'paused', 'closed']);
+
+// Run data arrives over three independent paths (initial REST, WebSocket
+// snapshot/update, and detail REST). Keep only the newest revision so a slow
+// response can never turn a completed run back into a pulsing running one.
+function runRevision(r) {
+  return Number.isSafeInteger(r && r.revision) ? r.revision : 0;
+}
+
+function mergeRunSummary(incoming) {
+  const current = state.runs.get(incoming.id);
+  if (current) {
+    const nextRev = runRevision(incoming);
+    const currentRev = runRevision(current);
+    if (nextRev < currentRev) return false;
+    if (nextRev === currentRev) {
+      // Backward-compatible guard for old persisted records without revision.
+      if (RUN_TERMINAL.has(current.status) && LIVE_POLL.has(incoming.status)) return false;
+      if ((incoming.done || 0) < (current.done || 0)) return false;
+      const movedToTerminal = !RUN_TERMINAL.has(current.status) && RUN_TERMINAL.has(incoming.status);
+      const madeProgress = (incoming.done || 0) > (current.done || 0);
+      if (!movedToTerminal && !madeProgress) return false;
+    }
+  }
+  state.runs.set(incoming.id, incoming);
+  return true;
+}
+
+function mergeRunMeta(meta) {
+  const current = state.details.get(meta.id);
+  let detailChanged = false;
+  if (!current || runRevision(meta) > runRevision(current)) {
+    state.details.set(meta.id, meta);
+    detailChanged = true;
+  }
+  const summaryChanged = mergeRunSummary(toSummary(meta));
+  return detailChanged || summaryChanged;
+}
 
 // ---------- WebSocket ----------
 let ws;
@@ -29,7 +68,10 @@ function connect() {
   // (e.g. Cloudflare): https → wss, http → ws. Avoids mixed-content blocking.
   const wsProto = location.protocol === 'https:' ? 'wss:' : 'ws:';
   ws = new WebSocket(`${wsProto}//${location.host}/ws`);
-  ws.onopen = () => setConn(true);
+  ws.onopen = () => {
+    setConn(true);
+    refreshRuns();
+  };
   ws.onclose = () => {
     setConn(false);
     setTimeout(connect, 1500);
@@ -37,12 +79,11 @@ function connect() {
   ws.onmessage = (ev) => {
     const msg = JSON.parse(ev.data);
     if (msg.type === 'snapshot') {
-      state.runs.clear();
-      msg.runs.forEach((r) => state.runs.set(r.id, r));
+      msg.runs.forEach(mergeRunSummary);
       state.pending.clear();
       (msg.pending || []).forEach((p) => state.pending.set(p.id, p));
-      renderAll();
-    } else if (msg.type === 'pending:update') {
+      finishInitialLoad();
+    } else if (msg.type === "pending:update") {
       state.pending.set(msg.task.id, msg.task);
       renderAll();
     } else if (msg.type === 'pending:remove') {
@@ -51,8 +92,7 @@ function connect() {
     } else if (msg.type === 'run:update') {
       const r = msg.run;
       // keep a summary-shaped record in runs, store full meta in details
-      state.details.set(r.id, r);
-      state.runs.set(r.id, toSummary(r));
+      if (!mergeRunMeta(r)) return;
       renderAll();
       if (state.openDrawer === r.id) {
         if (state.liveTimer && !LIVE_POLL.has(r.status)) {
@@ -76,7 +116,7 @@ function toSummary(meta) {
   const errored = meta.commands.some((c) => c.status === 'error');
   const t = runTiming(meta.commands, meta.finishedAt);
   return {
-    id: meta.id, name: meta.name, session: meta.session, status: meta.status,
+    id: meta.id, revision: meta.revision, name: meta.name, session: meta.session, status: meta.status,
     cwd: meta.cwd, createdAt: meta.createdAt, finishedAt: meta.finishedAt,
     logFile: meta.logFile, attach: meta.attach, total, done, errored,
     steps: meta.commands.map((c) => c.status),
@@ -254,11 +294,17 @@ $$('.nav-item').forEach((b) =>
 );
 function switchView(view) {
   state.view = view;
-  $$('.nav-item').forEach((b) => b.classList.toggle('active', b.dataset.view === view));
+  $$(".nav-item").forEach((b) => {
+    const active = b.dataset.view === view;
+    b.classList.toggle("active", active);
+    if (active) b.setAttribute("aria-current", "page");
+    else b.removeAttribute("aria-current");
+  });
   $$('.view').forEach((v) => v.classList.add('hidden'));
   $('#view-' + view).classList.remove('hidden');
-  if (view === 'history') renderHistory();
-  if (view === 'compose' && triggerType.value === 'after') fillAfterOptions();
+  if (view === "sessions") { renderPending(); renderSessions(); }
+  if (view === "history") renderHistory();
+  if (view === "compose" && triggerType.value === 'after') fillAfterOptions();
 }
 
 // ---------- Compose ----------
@@ -435,77 +481,188 @@ class UIStepper {
   set value(v) { this._set(+v || 0); }
 }
 
+// Inline icons for the picker. Drawn as SVG rather than emoji/typographic
+// glyphs so the control renders identically everywhere, whatever fonts a
+// viewer's browser happens to fall back to.
+const DT_ICON_CAL =
+  '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="5" width="18" height="16" rx="3"/>' +
+  '<path d="M8 3v4M16 3v4M3 10h18"/></svg>';
+const DT_ICON_PREV = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m14 6-6 6 6 6"/></svg>';
+const DT_ICON_NEXT = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m10 6 6 6-6 6"/></svg>';
+
 // A styled date + time picker (calendar grid + hour/minute steppers) replacing
 // <input type="datetime-local">. Times are interpreted in the viewer's local
 // timezone, which is shown in the popup. .getTime() → epoch ms (or null).
+//
+// The popup is portalled onto <body> and placed with position:fixed against the
+// field's viewport rect. Anchoring it inside the host instead used to leave it
+// clipped by (or stacked under) whatever card was scrolling around it, so the
+// calendar could open as a sliver of overlapping rows.
 class UIDateTime {
+  static active = null; // only one picker is open at a time
+  static _bound = false;
+
   constructor(el) {
     this.el = el;
     this.date = null; // chosen day (Date at local midnight) or null
     const now = new Date();
     this.viewY = now.getFullYear();
     this.viewM = now.getMonth();
+    // A real <button> for the field: it makes the control keyboard-operable and,
+    // when the picker sits inside a <label>, it becomes that label's target so a
+    // click on the caption opens the picker instead of firing whichever button
+    // happened to come first in the popup markup.
     el.innerHTML =
-      '<div class="ui-dt-field" tabindex="0">' +
+      '<button type="button" class="ui-dt-field" aria-haspopup="dialog" aria-expanded="false">' +
+        `<span class="ui-dt-ico">${DT_ICON_CAL}</span>` +
         '<span class="ui-dt-text placeholder">Pick a date &amp; time</span>' +
-        '<span class="ui-select-caret">🗓</span>' +
-      '</div>' +
-      '<div class="ui-dt-pop">' +
-        '<div class="ui-dt-cal-head">' +
-          '<button type="button" class="ui-dt-nav" data-d="-1">‹</button>' +
-          '<span class="ui-dt-title"></span>' +
-          '<button type="button" class="ui-dt-nav" data-d="1">›</button>' +
-        '</div>' +
-        '<div class="ui-dt-dow"></div>' +
-        '<div class="ui-dt-grid"></div>' +
-        '<div class="ui-dt-time">' +
-          '<span class="ui-dt-time-lbl">Time</span>' +
-          '<div class="ui-stepper sm" data-min="0" data-max="23" data-value="9"></div>' +
-          '<span class="ui-dt-colon">:</span>' +
-          '<div class="ui-stepper sm" data-min="0" data-max="59" data-value="0"></div>' +
-          '<span class="ui-dt-tz"></span>' +
-        '</div>' +
-        '<div class="ui-dt-actions">' +
-          '<button type="button" class="btn ghost sm ui-dt-clear">Clear</button>' +
-          '<button type="button" class="btn primary sm ui-dt-done">Done</button>' +
-        '</div>' +
-      '</div>';
+      '</button>';
     this.fieldEl = el.querySelector('.ui-dt-field');
     this.textEl = el.querySelector('.ui-dt-text');
-    this.titleEl = el.querySelector('.ui-dt-title');
-    this.gridEl = el.querySelector('.ui-dt-grid');
-    el.querySelector('.ui-dt-dow').innerHTML = ['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa']
+
+    this.pop = document.createElement('div');
+    this.pop.className = 'ui-dt-pop';
+    this.pop.setAttribute('role', 'dialog');
+    this.pop.setAttribute('aria-label', 'Choose date and time');
+    this.pop.innerHTML =
+      '<div class="ui-dt-cal-head">' +
+        `<button type="button" class="ui-dt-nav" data-d="-1" aria-label="Previous month">${DT_ICON_PREV}</button>` +
+        '<span class="ui-dt-title"></span>' +
+        `<button type="button" class="ui-dt-nav" data-d="1" aria-label="Next month">${DT_ICON_NEXT}</button>` +
+      '</div>' +
+      '<div class="ui-dt-dow"></div>' +
+      '<div class="ui-dt-grid"></div>' +
+      '<div class="ui-dt-time">' +
+        '<span class="ui-dt-time-lbl">Time</span>' +
+        '<div class="ui-stepper sm" data-min="0" data-max="23" data-value="9"></div>' +
+        '<span class="ui-dt-colon">:</span>' +
+        '<div class="ui-stepper sm" data-min="0" data-max="59" data-value="0"></div>' +
+        '<span class="ui-dt-tz"></span>' +
+      '</div>' +
+      '<div class="ui-dt-actions">' +
+        '<button type="button" class="btn ghost sm ui-dt-today">Today</button>' +
+        '<span class="ui-dt-spacer"></span>' +
+        '<button type="button" class="btn ghost sm ui-dt-clear">Clear</button>' +
+        '<button type="button" class="btn primary sm ui-dt-done">Done</button>' +
+      '</div>';
+    this.titleEl = this.pop.querySelector('.ui-dt-title');
+    this.gridEl = this.pop.querySelector('.ui-dt-grid');
+    this.pop.querySelector('.ui-dt-dow').innerHTML = ['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa']
       .map((d) => `<span>${d}</span>`).join('');
-    el.querySelector('.ui-dt-tz').textContent = tzLabel();
-    const steppers = el.querySelectorAll('.ui-stepper');
+    this.pop.querySelector('.ui-dt-tz').textContent = tzLabel();
+    const steppers = this.pop.querySelectorAll('.ui-stepper');
     this.hour = new UIStepper(steppers[0], () => this._renderField());
     this.minute = new UIStepper(steppers[1], () => this._renderField());
 
-    this.fieldEl.addEventListener('click', () => {
-      // When opening with nothing chosen yet, land on the current month so the
-      // picker always shows today first.
-      if (!el.classList.contains('open') && !this.date) {
-        const now = new Date();
-        this.viewY = now.getFullYear();
-        this.viewM = now.getMonth();
-        this._renderGrid();
-      }
-      el.classList.toggle('open');
+    this.fieldEl.addEventListener('click', (e) => {
+      e.preventDefault();
+      this.isOpen() ? this.close() : this.open();
     });
-    el.querySelectorAll('.ui-dt-nav').forEach((b) =>
+    // The popup lives on <body>, so card-level click handlers never see it.
+    this.pop.querySelectorAll('.ui-dt-nav').forEach((b) =>
       b.addEventListener('click', () => { this._shiftMonth(+b.dataset.d); })
     );
-    el.querySelector('.ui-dt-clear').addEventListener('click', () => { this.date = null; this._renderGrid(); this._renderField(); });
-    el.querySelector('.ui-dt-done').addEventListener('click', () => el.classList.remove('open'));
-    document.addEventListener('click', (e) => { if (!el.contains(e.target)) el.classList.remove('open'); });
+    this.pop.querySelector('.ui-dt-today').addEventListener('click', () => {
+      const t = new Date();
+      this.viewY = t.getFullYear();
+      this.viewM = t.getMonth();
+      this.date = new Date(t.getFullYear(), t.getMonth(), t.getDate());
+      this._renderGrid();
+      this._renderField();
+    });
+    this.pop.querySelector('.ui-dt-clear').addEventListener('click', () => { this.date = null; this._renderGrid(); this._renderField(); });
+    this.pop.querySelector('.ui-dt-done').addEventListener('click', () => this.close());
+
+    UIDateTime._bind();
     this._renderGrid();
     this._renderField();
   }
+
+  // One set of document-level listeners drives whichever picker is open.
+  static _bind() {
+    if (UIDateTime._bound) return;
+    UIDateTime._bound = true;
+    document.addEventListener('click', (e) => {
+      const a = UIDateTime.active;
+      if (a && !a.el.contains(e.target) && !a.pop.contains(e.target)) a.close();
+    });
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape' && UIDateTime.active) UIDateTime.active.close();
+    });
+    // Follow the field while the page (or any scroller under it) moves; if the
+    // field scrolls out of sight, dismiss instead of leaving a floating panel.
+    const track = () => {
+      const a = UIDateTime.active;
+      if (!a) return;
+      if (!document.body.contains(a.el)) return a.close();
+      const r = a.fieldEl.getBoundingClientRect();
+      if (r.bottom < 0 || r.top > window.innerHeight) return a.close();
+      a._place();
+    };
+    document.addEventListener('scroll', track, true);
+    window.addEventListener('resize', track);
+  }
+
+  // Drop a popup whose field has been removed from the DOM (pending cards are
+  // rebuilt from scratch on every update).
+  static dropOrphans() {
+    const a = UIDateTime.active;
+    if (a && !document.body.contains(a.el)) a.close();
+  }
+
+  isOpen() { return UIDateTime.active === this; }
+
+  open() {
+    if (UIDateTime.active) UIDateTime.active.close();
+    // Opening with nothing chosen yet lands on the current month, so the picker
+    // always shows today first.
+    if (!this.date) {
+      const now = new Date();
+      this.viewY = now.getFullYear();
+      this.viewM = now.getMonth();
+    }
+    this._renderGrid();
+    document.body.appendChild(this.pop);
+    this.el.classList.add('open');
+    this.fieldEl.setAttribute('aria-expanded', 'true');
+    UIDateTime.active = this;
+    this._place();
+  }
+
+  close() {
+    if (UIDateTime.active === this) UIDateTime.active = null;
+    this.el.classList.remove('open');
+    this.fieldEl.setAttribute('aria-expanded', 'false');
+    this.pop.remove();
+  }
+
+  // Prefer below the field, flip above when the bottom of the viewport is
+  // closer, and always stay fully on screen.
+  _place() {
+    const r = this.fieldEl.getBoundingClientRect();
+    const w = this.pop.offsetWidth;
+    const h = this.pop.offsetHeight;
+    const pad = 10;
+    const gap = 8;
+    let top = r.bottom + gap;
+    let flip = false;
+    if (top + h > window.innerHeight - pad) {
+      const above = r.top - gap - h;
+      if (above >= pad) { top = above; flip = true; }
+      else top = Math.max(pad, window.innerHeight - pad - h);
+    }
+    const left = Math.min(Math.max(pad, r.left), Math.max(pad, window.innerWidth - pad - w));
+    this.pop.style.top = `${Math.round(top)}px`;
+    this.pop.style.left = `${Math.round(left)}px`;
+    this.pop.classList.toggle('flip', flip);
+  }
+
   _shiftMonth(d) {
     this.viewM += d;
     if (this.viewM < 0) { this.viewM = 11; this.viewY--; }
     else if (this.viewM > 11) { this.viewM = 0; this.viewY++; }
     this._renderGrid();
+    if (this.isOpen()) this._place();
   }
   _renderGrid() {
     this.titleEl.textContent = new Date(this.viewY, this.viewM, 1)
@@ -514,7 +671,9 @@ class UIDateTime {
     const days = new Date(this.viewY, this.viewM + 1, 0).getDate();
     const today = new Date(); today.setHours(0, 0, 0, 0);
     let html = '';
-    for (let i = 0; i < startDow; i++) html += '<span class="ui-dt-cell empty"></span>';
+    // "blank", not "empty": .empty is the app-wide empty-state panel (min-height
+    // 270px), and it would inflate every leading cell — and with it the grid.
+    for (let i = 0; i < startDow; i++) html += '<span class="ui-dt-cell blank"></span>';
     for (let d = 1; d <= days; d++) {
       const cell = new Date(this.viewY, this.viewM, d);
       const past = cell < today;
@@ -631,7 +790,8 @@ async function runSet() {
   if (!trigger) return; // buildTrigger already flagged the problem
   hint.className = 'hint';
   hint.textContent = '';
-  $('#run-btn').disabled = true;
+  const runBtn = $("#run-btn");
+  setButtonBusy(runBtn, true, trigger.type === "now" ? "Launching…" : "Saving…");
   try {
     const res = await fetch('/api/runs', {
       method: 'POST',
@@ -653,7 +813,8 @@ async function runSet() {
   } catch (e) {
     flagHint(e.message);
   } finally {
-    $('#run-btn').disabled = false;
+    setButtonBusy(runBtn, false);
+    syncTriggerUI();
   }
 }
 function flagHint(msg) {
@@ -663,6 +824,30 @@ function flagHint(msg) {
 }
 
 // ---------- Rendering ----------
+function finishInitialLoad() {
+  state.initialLoaded = true;
+  const bar = $("#app-progress");
+  bar.classList.remove("is-active");
+  bar.setAttribute("aria-hidden", "true");
+  renderAll();
+}
+
+function loadingCards(count = 3) {
+  return Array.from({ length: count }, () =>
+    "<div class=\"skeleton-card\" aria-hidden=\"true\">" +
+      "<span class=\"skeleton sk-title\"></span><span class=\"skeleton sk-badge\"></span>" +
+      "<span class=\"skeleton sk-line\"></span><span class=\"skeleton sk-line short\"></span>" +
+    "</div>").join("");
+}
+
+function loadingRows(count = 4) {
+  return Array.from({ length: count }, () =>
+    "<div class=\"skeleton-row\" aria-hidden=\"true\">" +
+      "<span class=\"skeleton sk-dot\"></span><span class=\"skeleton sk-line\"></span>" +
+      "<span class=\"skeleton sk-badge\"></span>" +
+    "</div>").join("");
+}
+
 function renderAll() {
   renderPending();
   renderSessions();
@@ -702,7 +887,8 @@ function pendingBadge(p) {
 }
 
 function renderPending() {
-  const section = $('#pending-section');
+  const section = $("#pending-section");
+  if (!state.initialLoaded) { section.classList.add("hidden"); return; }
   const all = [...state.pending.values()].sort((a, b) => {
     const da = a.trigger?.runAt || a.createdAt;
     const db = b.trigger?.runAt || b.createdAt;
@@ -740,6 +926,8 @@ function renderPendingGroup(groupId, gridId, list) {
     buildPendingCard(card, p);
     grid.appendChild(card);
   }
+  // A discarded editor card must not leave its portalled date popup behind.
+  UIDateTime.dropOrphans();
 }
 
 // A queued task at rest: name, trigger summary, and its action buttons.
@@ -771,8 +959,8 @@ function buildPendingCard(card, p) {
     const act = e.target.dataset.act;
     if (!act) return;
     e.stopPropagation();
-    if (act === 'start') startPending(p.id);
-    else if (act === 'cancel') cancelPending(p.id);
+    if (act === "start") startPending(p.id, e.target);
+    else if (act === "cancel") cancelPending(p.id, e.target);
     else if (act === 'edit') editPending(p);
     else if (act === 'preview') previewPending(p);
     else if (act === 'trigger') openTriggerEdit(p);
@@ -881,11 +1069,11 @@ function buildTriggerEditCard(card, p) {
     if (!act) return;
     e.stopPropagation();
     if (act === 'canceledit') { state.triggerEdit = null; renderPending(); }
-    else if (act === 'save') saveTriggerEdit(p.id, d, timePick, afterSel);
+    else if (act === "save") saveTriggerEdit(p.id, d, timePick, afterSel, e.target);
   });
 }
 
-async function saveTriggerEdit(id, d, timePick, afterSel) {
+async function saveTriggerEdit(id, d, timePick, afterSel, button) {
   let trigger;
   if (d.type === 'hold') {
     trigger = { type: 'hold' };
@@ -903,8 +1091,9 @@ async function saveTriggerEdit(id, d, timePick, afterSel) {
     if (!dependsOn) return toast('Pick a running session to wait for.');
     trigger = { type: 'after', dependsOn };
   }
+  setButtonBusy(button, true, "Saving…");
   try {
-    const res = await fetch('/api/pending/' + id + '/trigger', {
+    const res = await fetch("/api/pending/" + id + "/trigger", {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ trigger }),
@@ -915,11 +1104,14 @@ async function saveTriggerEdit(id, d, timePick, afterSel) {
     toast(`Updated trigger — ${triggerLabel(data.trigger)}`);
     renderPending();
   } catch (e) {
-    toast('Failed to update trigger: ' + e.message);
+    toast("Failed to update trigger: " + e.message);
+  } finally {
+    setButtonBusy(button, false);
   }
 }
 
-async function startPending(id) {
+async function startPending(id, button) {
+  setButtonBusy(button, true, "Starting…");
   try {
     const res = await fetch('/api/pending/' + id + '/start', { method: 'POST' });
     const data = await res.json();
@@ -927,11 +1119,13 @@ async function startPending(id) {
     toast(`Started “${data.name}”`);
     setTimeout(() => openDrawer(data.id), 150);
   } catch (e) {
-    toast('Failed to start: ' + e.message);
+    toast("Failed to start: " + e.message);
+  } finally {
+    setButtonBusy(button, false);
   }
 }
 
-async function cancelPending(id) {
+async function cancelPending(id, button) {
   const p = state.pending.get(id);
   const ok = await confirmDialog({
     title: 'Cancel pending task?',
@@ -939,11 +1133,14 @@ async function cancelPending(id) {
     confirmText: '✕ Cancel task',
   });
   if (!ok) return;
+  setButtonBusy(button, true, "Cancelling…");
   try {
-    await fetch('/api/pending/' + id + '/cancel', { method: 'POST' });
+    await fetch("/api/pending/" + id + "/cancel", { method: "POST" });
     toast('Pending task cancelled');
   } catch {
-    toast('Failed to cancel');
+    toast("Failed to cancel");
+  } finally {
+    setButtonBusy(button, false);
   }
 }
 
@@ -975,7 +1172,12 @@ function fmtTime(ts) {
 }
 
 function renderSessions() {
-  const grid = $('#sessions-grid');
+  const grid = $("#sessions-grid");
+  if (!state.initialLoaded) {
+    $("#sessions-empty").classList.add("hidden");
+    grid.innerHTML = loadingCards();
+    return;
+  }
   const list = [...state.runs.values()]
     .filter((r) => LIVE_ACTIVE.has(r.status))
     .sort((a, b) => b.createdAt - a.createdAt);
@@ -1000,7 +1202,7 @@ function renderSessions() {
         </div>
         ${statusBadge(r.status)}
       </div>
-      <div class="progress ${r.errored ? 'err' : ''}"><i style="width:${pct}%"></i></div>
+      <div class="progress ${r.status} ${r.errored ? 'err' : ''}"><i style="width:${pct}%"></i></div>
       <div class="session-meta">${r.done}/${r.total} steps${durHtml}</div>
       <div class="steps-mini">${ticksFor(r.id)}</div>
       <div class="card-actions">
@@ -1011,7 +1213,7 @@ function renderSessions() {
     card.addEventListener('click', (e) => {
       const act = e.target.dataset.act;
       if (act === 'copy') { copy(r.attach); e.stopPropagation(); }
-      else if (act === 'end') { e.stopPropagation(); endSession(r.id); }
+      else if (act === "end") { e.stopPropagation(); endSession(r.id, e.target); }
       else openDrawer(r.id);
     });
     grid.appendChild(card);
@@ -1026,7 +1228,9 @@ function ticksFor(id) {
   // (grey) — instead of an all-grey row while we wait for a run:update.
   const meta = state.details.get(id);
   const summary = state.runs.get(id);
-  const statuses = meta && meta.commands
+  // A detail request can race a newer summary update. Only let it drive the
+  // swatches when it represents at least the same run revision.
+  const statuses = meta && meta.commands && runRevision(meta) >= runRevision(summary)
     ? meta.commands.map((c) => c.status)
     : summary && summary.steps
       ? summary.steps
@@ -1040,7 +1244,12 @@ function statusBadge(s) {
 
 // ---------- History ----------
 async function renderHistory() {
-  const wrap = $('#history-list');
+  const wrap = $("#history-list");
+  if (!state.initialLoaded) {
+    $("#history-empty").classList.add("hidden");
+    wrap.innerHTML = loadingRows();
+    return;
+  }
   const list = [...state.runs.values()].sort((a, b) => b.createdAt - a.createdAt);
   $('#history-empty').classList.toggle('hidden', list.length > 0);
   // preserve which rows are open
@@ -1076,9 +1285,19 @@ async function toggleHistory(id, row) {
 }
 
 async function fillHistoryBody(id, row) {
-  const body = row.querySelector('.hrow-body');
-  const meta = await fetchDetail(id);
-  body.innerHTML = '';
+  const body = row.querySelector(".hrow-body");
+  body.setAttribute("aria-busy", "true");
+  body.innerHTML = "<div class=\"inline-loading\"><span class=\"spinner\"></span>Loading run details…</div>";
+  let meta;
+  try {
+    meta = await fetchDetail(id);
+  } catch {
+    body.innerHTML = "<div class=\"inline-error\">Could not load run details. Click the row to try again.</div>";
+    return;
+  } finally {
+    body.removeAttribute("aria-busy");
+  }
+  body.innerHTML = "";
 
   // Toolbar: expand/collapse all of THIS run's command outputs, select-all,
   // and "send selected to Compose".
@@ -1163,10 +1382,11 @@ function sendToCompose(body, meta) {
 }
 
 async function fetchDetail(id) {
-  const res = await fetch('/api/runs/' + id);
+  const res = await fetch("/api/runs/" + id);
+  if (!res.ok) throw new Error("Unable to load run details");
   const meta = await res.json();
-  state.details.set(id, meta);
-  return meta;
+  mergeRunMeta(meta);
+  return state.details.get(id) || meta;
 }
 
 // ---------- Drawer ----------
@@ -1177,11 +1397,11 @@ $('#drawer-copy').addEventListener('click', () => {
   if (r) copy(r.attach);
 });
 $('#drawer-kill').addEventListener('click', () => {
-  if (state.openDrawer) endSession(state.openDrawer);
+  if (state.openDrawer) endSession(state.openDrawer, $("#drawer-kill"));
 });
 
 // Close a tmux session after an in-app confirmation (no native dialog).
-async function endSession(id) {
+async function endSession(id, button) {
   const r = state.runs.get(id);
   const ok = await confirmDialog({
     title: 'Close session?',
@@ -1189,14 +1409,18 @@ async function endSession(id) {
     confirmText: '⏻ Close session',
   });
   if (!ok) return;
+  setButtonBusy(button, true, "Closing…");
   try {
-    await fetch('/api/runs/' + id + '/close', { method: 'POST' });
+    const res = await fetch("/api/runs/" + id + "/close", { method: "POST" });
+    if (!res.ok) throw new Error("failed");
     toast('Session closed');
   } catch {
-    toast('Failed to close session');
+    toast("Failed to close session");
+  } finally {
+    setButtonBusy(button, false);
   }
 }
-$('#dstep-expand-all').addEventListener('click', () => {
+$("#dstep-expand-all").addEventListener('click', () => {
   const meta = state.details.get(state.openDrawer);
   if (!meta) return;
   meta.commands.forEach((c) => state.drawerOpenSteps.add(c.idx));
@@ -1207,29 +1431,47 @@ $('#dstep-collapse-all').addEventListener('click', () => {
   $$('#drawer-steps .dstep').forEach((el) => el.classList.remove('open'));
 });
 
-async function openDrawer(id) {
-  state.openDrawer = id;
-  state.drawerOpenSteps = new Set();
-  $('#drawer').classList.remove('hidden');
-  $('#drawer-scrim').classList.remove('hidden');
-  // Seed the Raw stream. A live run uses the rendered grid (capture-pane) so
-  // in-place \r refreshes (spinners, progress bars) display correctly, and the
-  // poller keeps it fresh. A finished run uses the complete log — capture-pane
-  // would miss the tail and anything past the history-limit.
-  const seed = state.runs.get(id);
+async function seedDrawerStream(id, seed) {
   if (seed && LIVE_POLL.has(seed.status)) {
-    if (!state.live.get(id)) {
-      try {
-        const res = await fetch('/api/runs/' + id + '/live');
-        if (res.ok) state.live.set(id, (await res.json()).output || '');
-      } catch {}
-    }
+    if (state.live.has(id)) return;
+    const res = await fetch("/api/runs/" + id + "/live");
+    if (!res.ok) throw new Error("Unable to load live output");
+    state.live.set(id, (await res.json()).output || "");
   } else {
     await loadLogStream(id);
   }
-  await fetchDetail(id);
+}
+
+function setDrawerLoading(loading) {
+  const drawer = $("#drawer");
+  drawer.classList.toggle("is-loading", loading);
+  drawer.setAttribute("aria-busy", String(loading));
+  const consoleEl = $("#drawer-console");
+  consoleEl.classList.toggle("loading", loading);
+  if (loading) {
+    $("#drawer-steps").innerHTML = loadingRows(3);
+    consoleEl.textContent = "";
+  }
+}
+
+async function openDrawer(id) {
+  state.openDrawer = id;
+  state.drawerOpenSteps = new Set();
+  $("#drawer").classList.remove("hidden");
+  $("#drawer-scrim").classList.remove("hidden");
+  document.body.classList.add("overlay-open");
   renderDrawer(id);
-  const c = $('#drawer-console');
+  setDrawerLoading(true);
+  const seed = state.runs.get(id);
+  try {
+    await Promise.all([seedDrawerStream(id, seed), fetchDetail(id)]);
+  } catch {
+    if (state.openDrawer === id) toast("Some run details could not be loaded");
+  }
+  if (state.openDrawer !== id) return;
+  setDrawerLoading(false);
+  renderDrawer(id);
+  const c = $("#drawer-console");
   c.scrollTop = c.scrollHeight;
   startLivePoll(id);
 }
@@ -1237,7 +1479,9 @@ async function openDrawer(id) {
 function closeDrawer() {
   stopLivePoll();
   state.openDrawer = null;
-  $('#drawer').classList.add('hidden');
+  setDrawerLoading(false);
+  document.body.classList.remove("overlay-open");
+  $("#drawer").classList.add("hidden");
   $('#drawer-scrim').classList.add('hidden');
 }
 
@@ -1349,6 +1593,27 @@ function confirmDialog({ title, body, confirmText = 'Confirm', cancelText = 'Can
 }
 
 // ---------- Utils ----------
+function setButtonBusy(btn, busy, label = "Working…") {
+  if (!btn) return;
+  if (busy) {
+    if (!btn.dataset.idleLabel) btn.dataset.idleLabel = btn.textContent;
+    btn.textContent = label;
+    btn.disabled = true;
+    btn.classList.add("is-loading");
+    btn.setAttribute("aria-busy", "true");
+  } else {
+    if (btn.dataset.idleLabel) btn.textContent = btn.dataset.idleLabel;
+    delete btn.dataset.idleLabel;
+    btn.disabled = false;
+    btn.classList.remove("is-loading");
+    btn.removeAttribute("aria-busy");
+  }
+}
+
+$$("[data-go-compose]").forEach((btn) =>
+  btn.addEventListener("click", () => switchView("compose"))
+);
+
 function esc(s) {
   return String(s == null ? '' : s).replace(/[&<>"]/g, (m) => ({
     '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;',
@@ -1375,11 +1640,40 @@ function toast(msg) {
 // slow behind a proxy/tunnel); the socket then keeps things live.
 async function loadInitial() {
   try {
-    const [runsRes, pendRes] = await Promise.all([fetch('/api/runs'), fetch('/api/pending')]);
-    if (runsRes.ok) (await runsRes.json()).forEach((r) => state.runs.set(r.id, r));
+    const [runsRes, pendRes] = await Promise.all([fetch("/api/runs"), fetch("/api/pending")]);
+    if (runsRes.ok) (await runsRes.json()).forEach(mergeRunSummary);
     if (pendRes.ok) (await pendRes.json()).forEach((p) => state.pending.set(p.id, p));
-    renderAll();
-  } catch {}
+  } catch {} finally {
+    finishInitialLoad();
+  }
+}
+
+// WebSockets are the fast path, but proxies and laptop sleep/wake can delay a
+// frame without immediately closing the socket. Reconcile lightweight run
+// summaries periodically so progress reaches the backend truth within one
+// interval even when the push path is unhealthy.
+let runsRefreshInFlight = false;
+async function refreshRuns() {
+  if (runsRefreshInFlight) return;
+  runsRefreshInFlight = true;
+  try {
+    const res = await fetch('/api/runs', { cache: 'no-store' });
+    if (!res.ok) return;
+    const changedIds = new Set();
+    for (const r of await res.json()) {
+      if (mergeRunSummary(r)) changedIds.add(r.id);
+    }
+    if (changedIds.size) {
+      renderAll();
+      const openId = state.openDrawer;
+      if (openId && changedIds.has(openId)) {
+        await fetchDetail(openId);
+        if (state.openDrawer === openId) renderDrawer(openId);
+      }
+    }
+  } catch {} finally {
+    runsRefreshInFlight = false;
+  }
 }
 
 // Preview modal: close on the ✕, on scrim click, or Esc.
@@ -1396,3 +1690,4 @@ syncTriggerUI();
 connect();
 // Tick all live elapsed counters (running cards + the open drawer) once a second.
 setInterval(tickElapsed, 1000);
+setInterval(refreshRuns, 1500);

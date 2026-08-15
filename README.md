@@ -18,7 +18,9 @@ for errors later.
 ## Features
 
 - 🧩 **Compose & name command sets** — one bash command per line, in a clean,
-  light, polished (non-terminal-looking) UI. The editor shows **line numbers**
+  light, polished (non-terminal-looking) UI — including a **light navigation
+  rail**: a softly tinted surface separated from the canvas by a hairline, with
+  the violet accent reserved for the view you're on. The editor shows **line numbers**
   (soft-wrapped rows are marked with `↪` so you can tell a wrap from a real
   newline) and the Compose view displays the **absolute working directory** the
   fresh tmux session will start in.
@@ -27,7 +29,10 @@ for errors later.
   When composing, pick *when to run*:
   - **▶ Run now** — the default, launches immediately.
   - **✋ Hold** — keep the set on the page and start it by hand later.
-  - **⏰ At a specific time** — fire at an absolute date/time.
+  - **⏰ At a specific time** — fire at an absolute date/time, chosen in a
+    built-in calendar + clock popup (past days are greyed out, **Today** jumps
+    back to the current month, and the popup is rendered above the page so a
+    scrolling card can never clip it).
   - **⏳ After a delay** — fire *N* hours/minutes from now.
   - **🔗 After another session finishes** — chain off a currently-running set;
     fires the moment that set finishes executing (completed *or* paused on
@@ -154,6 +159,7 @@ WorkingDirectory=/home/ubuntu/MuxRunner
 ExecStart=/usr/bin/node /home/ubuntu/MuxRunner/server.js
 Restart=on-failure
 RestartSec=3
+KillMode=process
 StandardOutput=append:/home/ubuntu/MuxRunner/logs/service.log
 StandardError=append:/home/ubuntu/MuxRunner/logs/service.log
 
@@ -171,6 +177,10 @@ systemctl status muxrunner.service
 
 Adjust `User`, `WorkingDirectory`, and the `node` path for your host. Service
 output goes to `logs/service.log` (and `journalctl -u muxrunner`).
+
+Keep `KillMode=process`: MuxRunner intentionally launches long-lived tmux sessions,
+and this setting lets service deployments restart only the web process without
+terminating retained sessions or the commands running inside them.
 
 ### Restart the service
 
